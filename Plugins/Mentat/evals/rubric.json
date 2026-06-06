@@ -1,0 +1,68 @@
+{
+  "version": "0.2.0",
+  "name": "mentat-state-machine-rubric",
+  "description": "Three-criterion rubric for grading the Mentat state machine, predictive router, and persistence layer. Total weight sums to 1.0; aggregate score = sum(weight_i * score_i / 5.0).",
+  "criteria": [
+    {
+      "id": "state_transition_correctness",
+      "name": "State-Transition Correctness",
+      "description": "Given a synthetic event sequence, does the FSA land in the expected end state and traverse the expected intermediate states? The state machine is deterministic — any deviation indicates either a transition-table regression or an event-classification bug.",
+      "weight": 0.4,
+      "scoring_guide": {
+        "0": "No scenarios pass. FSA is non-functional or import-broken.",
+        "1": "One scenario passes. Transition table is severely degraded.",
+        "2": "Roughly half the scenarios pass. Multiple regressions.",
+        "3": "Most scenarios pass but at least two fail. One systematic regression.",
+        "4": "All but one scenario pass. Localized regression or edge case.",
+        "5": "All scenarios pass. FSA is on-spec."
+      },
+      "scenarios": [
+        "boot",
+        "write_loop",
+        "verify_loop",
+        "drift_recovery",
+        "compact_resume"
+      ]
+    },
+    {
+      "id": "predictive_routing_accuracy",
+      "name": "Predictive-Routing Accuracy",
+      "description": "After warming the Q-table on a synthetic 200-event trajectory with a known reward distribution, does thompson_recommend pick the empirically-best tool for each state at greater than 70% of the variance-weighted optimum? Cold-start fallback must be graceful (None or first-visit-equivalent). Contested states (two near-equal Q-values with different visit counts) must still allocate meaningful exploration weight (>= 15%) to the higher-variance arm.",
+      "weight": 0.3,
+      "scoring_guide": {
+        "0": "No scenarios pass. Recommender is non-functional or always returns None.",
+        "1": "One scenario passes. Recommender returns sensible output but selection rate is below random.",
+        "2": "Roughly half the scenarios pass. Cold start works but warm-table picks the wrong arm.",
+        "3": "Most scenarios pass but exploration is starved (always exploits) or one scenario fails by a wide margin.",
+        "4": "All but one scenario pass. Stochastic noise around the 70% threshold.",
+        "5": "All scenarios pass. Thompson sampling balances exploration and exploitation as designed."
+      },
+      "scenarios": [
+        "cold_start",
+        "warm_table",
+        "contested_state"
+      ]
+    },
+    {
+      "id": "persistence_recovery_integrity",
+      "name": "Persistence-Recovery Integrity",
+      "description": "Write FSA state and the Q-table to disk, simulate a crash, reload, and verify the recovered state is bit-identical to what was saved. Also verifies the post-compact handoff IO round-trip in isolation (file produced, parsed back to the same content).",
+      "weight": 0.3,
+      "scoring_guide": {
+        "0": "No scenarios pass. Persistence layer is broken — saves but cannot reload.",
+        "1": "One scenario passes. Round-trips lose data or corrupt the format.",
+        "2": "Roughly half the scenarios pass. One of the three persistence surfaces is broken.",
+        "3": "Most scenarios pass but Q-table or handoff round-trip has a subtle drift.",
+        "4": "All but one scenario pass. Edge case around empty or boundary state.",
+        "5": "All scenarios pass. Persistence is bit-identical across the save/load boundary."
+      },
+      "scenarios": [
+        "session_recover",
+        "q_table_resume",
+        "handoff_replay"
+      ]
+    }
+  ],
+  "aggregate_formula": "sum(criterion.weight * (criterion.score / 5.0) for criterion in criteria)",
+  "pass_threshold": 0.7
+}

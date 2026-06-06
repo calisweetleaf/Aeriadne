@@ -1,0 +1,20 @@
+{
+  "name": "mentat",
+  "description": "Live cognitive substrate for Claude Code: a state-machine + TD-learning routing + structured insight bus that runs alongside your session, modeled on the Muad'Dib MCP pattern. Persists across compaction, surfaces scope drift, contradictions, and reward signals in real time. Reflective skills (mentat:reflect, mentat:plan, mentat:dispatch, mentat:debrief) and specialist sub-agents (cartographer, crucible, scribe, sentinel) drive disciplined long autonomous chains.",
+  "version": "0.3.0",
+  "author": {
+    "name": "Daeron Blackfyre",
+    "url": "https://github.com/Somnus-Sovereign-Systems"
+  },
+  "homepage": "https://github.com/Somnus-Sovereign-Systems/mentat",
+  "license": "MIT",
+  "keywords": [
+    "state-machine",
+    "observability",
+    "insight",
+    "td-learning",
+    "muaddib",
+    "sovereign",
+    "cognitive-substrate"
+  ]
+}

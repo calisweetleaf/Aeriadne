@@ -1,0 +1,525 @@
+{
+  "rubric_name": "mentat-state-machine-rubric",
+  "rubric_version": "0.2.0",
+  "timestamp": "2026-05-10T20:49:29Z",
+  "aggregate_score": 1.0,
+  "pass_threshold": 0.7,
+  "passed_aggregate": true,
+  "criterion_scores": [
+    {
+      "id": "state_transition_correctness",
+      "name": "State-Transition Correctness",
+      "description": "Given a synthetic event sequence, does the FSA land in the expected end state and traverse the expected intermediate states? The state machine is deterministic \u2014 any deviation indicates either a transition-table regression or an event-classification bug.",
+      "weight": 0.4,
+      "raw_score": 5,
+      "pass_count": 5,
+      "scenario_count": 5,
+      "scenarios": [
+        {
+          "criterion_id": "state_transition_correctness",
+          "scenario_id": "boot",
+          "scenario_name": "Boot",
+          "description": "SESSION_START on a fresh FSA lands in PLANNING.",
+          "passed": true,
+          "evidence": "boot: SESSION_START kept FSA in PLANNING (1 step, 0 transitions)",
+          "error": null,
+          "duration_ms": 0.3,
+          "details": {
+            "expected_final": "planning",
+            "actual_final": "planning",
+            "trace": [
+              "planning",
+              "planning"
+            ]
+          }
+        },
+        {
+          "criterion_id": "state_transition_correctness",
+          "scenario_id": "write_loop",
+          "scenario_name": "Plan \u2192 Read \u2192 Write \u2192 Exec \u2192 Verify \u2192 Reflect",
+          "description": "End-to-end happy-path write loop through the FSA.",
+          "passed": true,
+          "evidence": "write_loop: traversed 6 events, ended in REFLECTING (4 transitions)",
+          "error": null,
+          "duration_ms": 0.09,
+          "details": {
+            "expected_final": "reflecting",
+            "actual_final": "reflecting",
+            "trace": [
+              "planning",
+              "planning",
+              "exploring",
+              "executing",
+              "executing",
+              "verifying",
+              "reflecting"
+            ]
+          }
+        },
+        {
+          "criterion_id": "state_transition_correctness",
+          "scenario_id": "verify_loop",
+          "scenario_name": "Verify-fail retry cycle",
+          "description": "VERIFYING + TOOL_ERROR drops to EXECUTING then re-verifies on next VERIFY_TOOL.",
+          "passed": true,
+          "evidence": "verify_loop: VERIFYING-error-retry-success cycled cleanly back to REFLECTING",
+          "error": null,
+          "duration_ms": 0.06,
+          "details": {
+            "expected_final": "reflecting",
+            "actual_final": "reflecting",
+            "trace": [
+              "verifying",
+              "executing",
+              "verifying",
+              "reflecting"
+            ]
+          }
+        },
+        {
+          "criterion_id": "state_transition_correctness",
+          "scenario_id": "drift_recovery",
+          "scenario_name": "Scope-drift universal override",
+          "description": "SCOPE_DRIFT_DETECTED forces DRIFTING from any state; PROMPT_SUBMIT returns to PLANNING.",
+          "passed": true,
+          "evidence": "drift_recovery: SCOPE_DRIFT_DETECTED \u2192 DRIFTING \u2192 PROMPT_SUBMIT \u2192 PLANNING held for all 6 initial states",
+          "error": null,
+          "duration_ms": 0.08,
+          "details": {
+            "tested_initials": [
+              "planning",
+              "exploring",
+              "executing",
+              "verifying",
+              "reflecting",
+              "blocked"
+            ],
+            "failure_count": 0
+          }
+        },
+        {
+          "criterion_id": "state_transition_correctness",
+          "scenario_id": "compact_resume",
+          "scenario_name": "Compaction handoff",
+          "description": "PRE_COMPACT \u2192 COMPACTING from any state; POST_COMPACT lands in REFLECTING.",
+          "passed": true,
+          "evidence": "compact_resume: PRE_COMPACT \u2192 COMPACTING \u2192 POST_COMPACT \u2192 REFLECTING held for all 7 initial states",
+          "error": null,
+          "duration_ms": 0.08,
+          "details": {
+            "tested_initials": [
+              "planning",
+              "exploring",
+              "executing",
+              "verifying",
+              "reflecting",
+              "blocked",
+              "drifting"
+            ],
+            "failure_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "predictive_routing_accuracy",
+      "name": "Predictive-Routing Accuracy",
+      "description": "After warming the Q-table on a synthetic 200-event trajectory with a known reward distribution, does thompson_recommend pick the empirically-best tool for each state at greater than 70% of the variance-weighted optimum? Cold-start fallback must be graceful (None or first-visit-equivalent). Contested states (two near-equal Q-values with different visit counts) must still allocate meaningful exploration weight (>= 15%) to the higher-variance arm.",
+      "weight": 0.3,
+      "raw_score": 5,
+      "pass_count": 3,
+      "scenario_count": 3,
+      "scenarios": [
+        {
+          "criterion_id": "predictive_routing_accuracy",
+          "scenario_id": "cold_start",
+          "scenario_name": "Cold-start fallback",
+          "description": "Empty Q-table does not crash and explores at least 3 arms in 100 trials.",
+          "passed": true,
+          "evidence": "cold_start: 100 trials over empty Q-table touched 6/6 distinct arms (recommender is exploring, not collapsed). counts={'Read': 12, 'Grep': 16, 'Glob': 17, 'Edit': 16, 'Bash': 18, 'Agent': 21}",
+          "error": null,
+          "duration_ms": 5.36,
+          "details": {
+            "counts": {
+              "Read": 12,
+              "Grep": 16,
+              "Glob": 17,
+              "Edit": 16,
+              "Bash": 18,
+              "Agent": 21
+            },
+            "nonzero_arms": 6
+          }
+        },
+        {
+          "criterion_id": "predictive_routing_accuracy",
+          "scenario_id": "warm_table",
+          "scenario_name": "Warm-table exploitation",
+          "description": "Strong Read bias \u2192 Thompson recommends Read > 70% of trials.",
+          "passed": true,
+          "evidence": "warm_table: Read picked 97/100 (threshold > 70). distribution={'Read': 97, 'Grep': 0, 'Glob': 1, 'Edit': 0, 'Bash': 2, 'Agent': 0}",
+          "error": null,
+          "duration_ms": 6.36,
+          "details": {
+            "counts": {
+              "Read": 97,
+              "Grep": 0,
+              "Glob": 1,
+              "Edit": 0,
+              "Bash": 2,
+              "Agent": 0
+            },
+            "read_picks": 97,
+            "threshold": 70
+          }
+        },
+        {
+          "criterion_id": "predictive_routing_accuracy",
+          "scenario_id": "contested_state",
+          "scenario_name": "Contested state \u2014 exploration weight",
+          "description": "Near-equal Q, different visits \u2192 high-variance arm gets >= 15% selection.",
+          "passed": true,
+          "evidence": "contested_state: high-variance arm Glob picked 50/100 (threshold >= 15). distribution={'Read': 50, 'Glob': 50}",
+          "error": null,
+          "duration_ms": 3.0,
+          "details": {
+            "counts": {
+              "Read": 50,
+              "Glob": 50
+            },
+            "glob_picks": 50,
+            "threshold": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "persistence_recovery_integrity",
+      "name": "Persistence-Recovery Integrity",
+      "description": "Write FSA state and the Q-table to disk, simulate a crash, reload, and verify the recovered state is bit-identical to what was saved. Also verifies the post-compact handoff IO round-trip in isolation (file produced, parsed back to the same content).",
+      "weight": 0.3,
+      "raw_score": 5,
+      "pass_count": 3,
+      "scenario_count": 3,
+      "scenarios": [
+        {
+          "criterion_id": "persistence_recovery_integrity",
+          "scenario_id": "session_recover",
+          "scenario_name": "Session JSON round-trip",
+          "description": "Save + load of a populated Session is field-identical.",
+          "passed": true,
+          "evidence": "session_recover: all 10 Session fields round-tripped identically through JSON",
+          "error": null,
+          "duration_ms": 0.43,
+          "details": {
+            "field_count": 10,
+            "diff_count": 0,
+            "saved": {
+              "session_id": "eval-session-recover",
+              "state": "verifying",
+              "chain_depth": 7,
+              "drift_count": 2,
+              "transition_count": 42,
+              "started_at": 1715300000.0,
+              "last_event_at": 1715301234.5,
+              "last_tool": "Bash",
+              "last_tool_success": true,
+              "notes": [
+                "first note",
+                "second note with \"quotes\""
+              ]
+            },
+            "loaded": {
+              "session_id": "eval-session-recover",
+              "state": "verifying",
+              "chain_depth": 7,
+              "drift_count": 2,
+              "transition_count": 42,
+              "started_at": 1715300000.0,
+              "last_event_at": 1715301234.5,
+              "last_tool": "Bash",
+              "last_tool_success": true,
+              "notes": [
+                "first note",
+                "second note with \"quotes\""
+              ]
+            }
+          }
+        },
+        {
+          "criterion_id": "persistence_recovery_integrity",
+          "scenario_id": "q_table_resume",
+          "scenario_name": "Q-table close/reopen",
+          "description": "SQLite-backed Q-table survives a close/reopen cycle bit-identically.",
+          "passed": true,
+          "evidence": "q_table_resume: 6 rows bit-identical across close/reopen cycle",
+          "error": null,
+          "duration_ms": 3.23,
+          "details": {
+            "row_count": 6,
+            "diff_count": 0
+          }
+        },
+        {
+          "criterion_id": "persistence_recovery_integrity",
+          "scenario_id": "handoff_replay",
+          "scenario_name": "Pre-compact handoff IO",
+          "description": "handoff.md is written, read back, and field-extracted to the same values.",
+          "passed": true,
+          "evidence": "handoff_replay: round-tripped 545 bytes; extracted state=VERIFYING, last_tool=pytest, chain_depth=6",
+          "error": null,
+          "duration_ms": 0.22,
+          "details": {
+            "byte_match": true,
+            "extracted_state": "VERIFYING",
+            "extracted_tool": "pytest",
+            "extracted_chain_depth": "6"
+          }
+        }
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "criterion_id": "state_transition_correctness",
+      "scenario_id": "boot",
+      "scenario_name": "Boot",
+      "description": "SESSION_START on a fresh FSA lands in PLANNING.",
+      "passed": true,
+      "evidence": "boot: SESSION_START kept FSA in PLANNING (1 step, 0 transitions)",
+      "error": null,
+      "duration_ms": 0.3,
+      "details": {
+        "expected_final": "planning",
+        "actual_final": "planning",
+        "trace": [
+          "planning",
+          "planning"
+        ]
+      }
+    },
+    {
+      "criterion_id": "state_transition_correctness",
+      "scenario_id": "write_loop",
+      "scenario_name": "Plan \u2192 Read \u2192 Write \u2192 Exec \u2192 Verify \u2192 Reflect",
+      "description": "End-to-end happy-path write loop through the FSA.",
+      "passed": true,
+      "evidence": "write_loop: traversed 6 events, ended in REFLECTING (4 transitions)",
+      "error": null,
+      "duration_ms": 0.09,
+      "details": {
+        "expected_final": "reflecting",
+        "actual_final": "reflecting",
+        "trace": [
+          "planning",
+          "planning",
+          "exploring",
+          "executing",
+          "executing",
+          "verifying",
+          "reflecting"
+        ]
+      }
+    },
+    {
+      "criterion_id": "state_transition_correctness",
+      "scenario_id": "verify_loop",
+      "scenario_name": "Verify-fail retry cycle",
+      "description": "VERIFYING + TOOL_ERROR drops to EXECUTING then re-verifies on next VERIFY_TOOL.",
+      "passed": true,
+      "evidence": "verify_loop: VERIFYING-error-retry-success cycled cleanly back to REFLECTING",
+      "error": null,
+      "duration_ms": 0.06,
+      "details": {
+        "expected_final": "reflecting",
+        "actual_final": "reflecting",
+        "trace": [
+          "verifying",
+          "executing",
+          "verifying",
+          "reflecting"
+        ]
+      }
+    },
+    {
+      "criterion_id": "state_transition_correctness",
+      "scenario_id": "drift_recovery",
+      "scenario_name": "Scope-drift universal override",
+      "description": "SCOPE_DRIFT_DETECTED forces DRIFTING from any state; PROMPT_SUBMIT returns to PLANNING.",
+      "passed": true,
+      "evidence": "drift_recovery: SCOPE_DRIFT_DETECTED \u2192 DRIFTING \u2192 PROMPT_SUBMIT \u2192 PLANNING held for all 6 initial states",
+      "error": null,
+      "duration_ms": 0.08,
+      "details": {
+        "tested_initials": [
+          "planning",
+          "exploring",
+          "executing",
+          "verifying",
+          "reflecting",
+          "blocked"
+        ],
+        "failure_count": 0
+      }
+    },
+    {
+      "criterion_id": "state_transition_correctness",
+      "scenario_id": "compact_resume",
+      "scenario_name": "Compaction handoff",
+      "description": "PRE_COMPACT \u2192 COMPACTING from any state; POST_COMPACT lands in REFLECTING.",
+      "passed": true,
+      "evidence": "compact_resume: PRE_COMPACT \u2192 COMPACTING \u2192 POST_COMPACT \u2192 REFLECTING held for all 7 initial states",
+      "error": null,
+      "duration_ms": 0.08,
+      "details": {
+        "tested_initials": [
+          "planning",
+          "exploring",
+          "executing",
+          "verifying",
+          "reflecting",
+          "blocked",
+          "drifting"
+        ],
+        "failure_count": 0
+      }
+    },
+    {
+      "criterion_id": "predictive_routing_accuracy",
+      "scenario_id": "cold_start",
+      "scenario_name": "Cold-start fallback",
+      "description": "Empty Q-table does not crash and explores at least 3 arms in 100 trials.",
+      "passed": true,
+      "evidence": "cold_start: 100 trials over empty Q-table touched 6/6 distinct arms (recommender is exploring, not collapsed). counts={'Read': 12, 'Grep': 16, 'Glob': 17, 'Edit': 16, 'Bash': 18, 'Agent': 21}",
+      "error": null,
+      "duration_ms": 5.36,
+      "details": {
+        "counts": {
+          "Read": 12,
+          "Grep": 16,
+          "Glob": 17,
+          "Edit": 16,
+          "Bash": 18,
+          "Agent": 21
+        },
+        "nonzero_arms": 6
+      }
+    },
+    {
+      "criterion_id": "predictive_routing_accuracy",
+      "scenario_id": "warm_table",
+      "scenario_name": "Warm-table exploitation",
+      "description": "Strong Read bias \u2192 Thompson recommends Read > 70% of trials.",
+      "passed": true,
+      "evidence": "warm_table: Read picked 97/100 (threshold > 70). distribution={'Read': 97, 'Grep': 0, 'Glob': 1, 'Edit': 0, 'Bash': 2, 'Agent': 0}",
+      "error": null,
+      "duration_ms": 6.36,
+      "details": {
+        "counts": {
+          "Read": 97,
+          "Grep": 0,
+          "Glob": 1,
+          "Edit": 0,
+          "Bash": 2,
+          "Agent": 0
+        },
+        "read_picks": 97,
+        "threshold": 70
+      }
+    },
+    {
+      "criterion_id": "predictive_routing_accuracy",
+      "scenario_id": "contested_state",
+      "scenario_name": "Contested state \u2014 exploration weight",
+      "description": "Near-equal Q, different visits \u2192 high-variance arm gets >= 15% selection.",
+      "passed": true,
+      "evidence": "contested_state: high-variance arm Glob picked 50/100 (threshold >= 15). distribution={'Read': 50, 'Glob': 50}",
+      "error": null,
+      "duration_ms": 3.0,
+      "details": {
+        "counts": {
+          "Read": 50,
+          "Glob": 50
+        },
+        "glob_picks": 50,
+        "threshold": 15
+      }
+    },
+    {
+      "criterion_id": "persistence_recovery_integrity",
+      "scenario_id": "session_recover",
+      "scenario_name": "Session JSON round-trip",
+      "description": "Save + load of a populated Session is field-identical.",
+      "passed": true,
+      "evidence": "session_recover: all 10 Session fields round-tripped identically through JSON",
+      "error": null,
+      "duration_ms": 0.43,
+      "details": {
+        "field_count": 10,
+        "diff_count": 0,
+        "saved": {
+          "session_id": "eval-session-recover",
+          "state": "verifying",
+          "chain_depth": 7,
+          "drift_count": 2,
+          "transition_count": 42,
+          "started_at": 1715300000.0,
+          "last_event_at": 1715301234.5,
+          "last_tool": "Bash",
+          "last_tool_success": true,
+          "notes": [
+            "first note",
+            "second note with \"quotes\""
+          ]
+        },
+        "loaded": {
+          "session_id": "eval-session-recover",
+          "state": "verifying",
+          "chain_depth": 7,
+          "drift_count": 2,
+          "transition_count": 42,
+          "started_at": 1715300000.0,
+          "last_event_at": 1715301234.5,
+          "last_tool": "Bash",
+          "last_tool_success": true,
+          "notes": [
+            "first note",
+            "second note with \"quotes\""
+          ]
+        }
+      }
+    },
+    {
+      "criterion_id": "persistence_recovery_integrity",
+      "scenario_id": "q_table_resume",
+      "scenario_name": "Q-table close/reopen",
+      "description": "SQLite-backed Q-table survives a close/reopen cycle bit-identically.",
+      "passed": true,
+      "evidence": "q_table_resume: 6 rows bit-identical across close/reopen cycle",
+      "error": null,
+      "duration_ms": 3.23,
+      "details": {
+        "row_count": 6,
+        "diff_count": 0
+      }
+    },
+    {
+      "criterion_id": "persistence_recovery_integrity",
+      "scenario_id": "handoff_replay",
+      "scenario_name": "Pre-compact handoff IO",
+      "description": "handoff.md is written, read back, and field-extracted to the same values.",
+      "passed": true,
+      "evidence": "handoff_replay: round-tripped 545 bytes; extracted state=VERIFYING, last_tool=pytest, chain_depth=6",
+      "error": null,
+      "duration_ms": 0.22,
+      "details": {
+        "byte_match": true,
+        "extracted_state": "VERIFYING",
+        "extracted_tool": "pytest",
+        "extracted_chain_depth": "6"
+      }
+    }
+  ],
+  "duration_ms": 19.33,
+  "markdown_summary": "# Mentat eval report \u2014 2026-05-10T20:49:29Z\n\n**Aggregate:** 1.000 / 1.000 (threshold 0.70) \u2014 **PASS**\n**Rubric:** `mentat-state-machine-rubric` v0.2.0\n**Duration:** 19.3 ms\n\n## Criteria\n\n### State-Transition Correctness \u2014 5/5 (5/5 scenarios) weight=0.40 contribution=0.400\n\n- **PASS** `boot` \u2014 boot: SESSION_START kept FSA in PLANNING (1 step, 0 transitions)\n- **PASS** `write_loop` \u2014 write_loop: traversed 6 events, ended in REFLECTING (4 transitions)\n- **PASS** `verify_loop` \u2014 verify_loop: VERIFYING-error-retry-success cycled cleanly back to REFLECTING\n- **PASS** `drift_recovery` \u2014 drift_recovery: SCOPE_DRIFT_DETECTED \u2192 DRIFTING \u2192 PROMPT_SUBMIT \u2192 PLANNING held for all 6 initial states\n- **PASS** `compact_resume` \u2014 compact_resume: PRE_COMPACT \u2192 COMPACTING \u2192 POST_COMPACT \u2192 REFLECTING held for all 7 initial states\n\n### Predictive-Routing Accuracy \u2014 5/5 (3/3 scenarios) weight=0.30 contribution=0.300\n\n- **PASS** `cold_start` \u2014 cold_start: 100 trials over empty Q-table touched 6/6 distinct arms (recommender is exploring, not collapsed). counts={'Read': 12, 'Grep': 16, 'Glob': 17, 'Edit': 16, 'Bash': 18, 'Agent': 21}\n- **PASS** `warm_table` \u2014 warm_table: Read picked 97/100 (threshold > 70). distribution={'Read': 97, 'Grep': 0, 'Glob': 1, 'Edit': 0, 'Bash': 2, 'Agent': 0}\n- **PASS** `contested_state` \u2014 contested_state: high-variance arm Glob picked 50/100 (threshold >= 15). distribution={'Read': 50, 'Glob': 50}\n\n### Persistence-Recovery Integrity \u2014 5/5 (3/3 scenarios) weight=0.30 contribution=0.300\n\n- **PASS** `session_recover` \u2014 session_recover: all 10 Session fields round-tripped identically through JSON\n- **PASS** `q_table_resume` \u2014 q_table_resume: 6 rows bit-identical across close/reopen cycle\n- **PASS** `handoff_replay` \u2014 handoff_replay: round-tripped 545 bytes; extracted state=VERIFYING, last_tool=pytest, chain_depth=6\n"
+}

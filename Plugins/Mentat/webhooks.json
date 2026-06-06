@@ -1,0 +1,36 @@
+{
+  "_doc": {
+    "schema": "mentat-webhooks/0.2",
+    "description": "Disler-compatible webhook config. Mentat emits a JSON envelope per insight to every endpoint that whitelists the hook_event_type.",
+    "fields": {
+      "enabled": "bool — master kill-switch. v0.2 ships with this false so installing v0.2 over v0.1 is a no-op until the user opts in.",
+      "max_payload_bytes": "int — bodies larger than this are truncated to a stub envelope before signing. Default 16384.",
+      "endpoints[]": {
+        "url": "str — full POST target. HTTPS recommended.",
+        "secret_env": "str — env var name that holds the shared HMAC secret. Mentat sets the X-Mentat-Signature header to 'sha256=<hex>' over the canonical JSON body.",
+        "events_filter": "list[str] — hook_event_type whitelist (e.g. ['reward_signal','state_transition']). Empty list = pass everything."
+      },
+      "envelope": {
+        "shape": "{source_app, session_id, hook_event_type, payload, timestamp, summary?}",
+        "hook_event_type": "Direct map from state_machine.insights.InsightType.value — see state_machine/insights.py.",
+        "timestamp": "ms since epoch (disler convention)."
+      },
+      "headers": {
+        "X-Mentat-Signature": "sha256=<hex HMAC of the request body using secret_env>",
+        "X-Idempotency-Key": "sha256(session_id:seq:hook_event_type) — deterministic so duplicates dedupe receiver-side."
+      },
+      "dlq": "Final failures land in ~/.mentat/webhook_dlq.sqlite. Drain with `mentat-webhooks drain`.",
+      "retry": "In-process: 3 attempts, exponential 1s/2s/4s. DLQ: 10min/1h/6h/24h, max 5 attempts then 'dead'."
+    }
+  },
+
+  "enabled": false,
+  "max_payload_bytes": 16384,
+  "endpoints": [
+    {
+      "url": "https://localhost:8443/events",
+      "secret_env": "MENTAT_WEBHOOK_SECRET",
+      "events_filter": []
+    }
+  ]
+}

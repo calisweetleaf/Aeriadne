@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""Mentat CLI inspector.
+
+Subcommands:
+    mentat status              show current session state
+    mentat tail [--n N]        last N insights
+    mentat q-table             dump the persistent Q-table
+    mentat insights --type T   filter by insight type
+    mentat note "<text>"       emit a NOTE insight
+    mentat drift "<text>"      run drift check against arbitrary text
+    mentat replay <session>    visualize a state-transition timeline
+    mentat scope               print the active scope.md
+    mentat reset               wipe state for the active session (keeps Q-table)
+
+All subcommands accept --json for machine-readable output.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+# Make the plugin's state_machine package importable.
+_HERE = Path(__file__).resolve().parent
+_PLUGIN_ROOT = _HERE.parent
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
+
+from state_machine import (  # noqa: E402
+    Insight, InsightBus, InsightType, QTable, State,
+)
+from state_machine.session import (  # noqa: E402
+    home_root, load_session, save_session, active_session_id,
+)
+from state_machine.drift import detect_drift, parse_scope  # noqa: E402
+
+
+def _ctx():
+    sid = active_session_id() or "default"
+    session = load_session(sid)
+    bus = InsightBus(home_root(), sid)
+    qt = QTable(home_root() / "q_table.sqlite")
+    return sid, session, bus, qt
+
+
+def cmd_status(args) -> int:
+    sid, session, bus, qt = _ctx()
+    out = {
+        "session_id": sid,
+        "state": session.state.value,
+        "transitions": session.transition_count,
+        "chain_depth": session.chain_depth,
+        "drift_count": session.drift_count,
+        "last_tool": session.last_tool,
+        "last_tool_success": session.last_tool_success,
+        "started_at": session.started_at,
+        "duration_s": time.time() - session.started_at,
+    }
+    best = qt.best(session.state)
+    out["q_best_tool"] = best[0] if best else None
+    out["q_best_value"] = best[1] if best else None
+    if args.json:
+        print(json.dumps(out, indent=2))
+    else:
+        print(f"session={out['session_id']}")
+        print(f"state={out['state']}  transitions={out['transitions']}  "
+              f"chain={out['chain_depth']}  drift={out['drift_count']}")
+        print(f"last_tool={out['last_tool']}  success={out['last_tool_success']}")
+        if best:
+            print(f"q_best={best[0]} (Q={best[1]:.3f})")
+    return 0
+
+
+def cmd_tail(args) -> int:
+    sid, session, bus, qt = _ctx()
+    rows = bus.tail(args.n)
+    if args.json:
+        print(json.dumps([json.loads(r.to_json()) for r in rows], indent=2))
+        return 0
+    for r in rows:
+        ts = time.strftime("%H:%M:%S", time.localtime(r.timestamp))
+        payload = json.dumps(r.payload, separators=(",", ":"))
+        print(f"[{ts}] {r.type.value:24s} state={r.state or '-':10s} {payload}")
+    return 0
+
+
+def cmd_qtable(args) -> int:
+    sid, session, bus, qt = _ctx()
+    rows = qt.dump()
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    last_state = None
+    for r in rows:
+        if r["state"] != last_state:
+            print()
+            print(f"=== state: {r['state']} ===")
+            last_state = r["state"]
+        print(f"  {r['tool']:30s}  Q={r['value']:+.3f}  visits={r['visits']:4d}")
+    return 0
+
+
+def cmd_insights(args) -> int:
+    sid, session, bus, qt = _ctx()
+    typ = InsightType(args.type) if args.type else None
+    rows = bus.query(type=typ, state=args.state, limit=args.limit)
+    if args.json:
+        print(json.dumps([json.loads(r.to_json()) for r in rows], indent=2))
+        return 0
+    for r in rows:
+        ts = time.strftime("%H:%M:%S", time.localtime(r.timestamp))
+        payload = json.dumps(r.payload, separators=(",", ":"))
+        print(f"[{ts}] {r.type.value:24s} state={r.state or '-':10s} {payload}")
+    return 0
+
+
+def cmd_note(args) -> int:
+    sid, session, bus, qt = _ctx()
+    ins = bus.emit(Insight(
+        type=InsightType.NOTE,
+        state=session.state.value,
+        payload={"text": args.text},
+    ))
+    if args.json:
+        print(json.dumps({"id": ins.id, "seq": ins.seq}))
+    else:
+        print(f"noted (seq={ins.seq})")
+    return 0
+
+
+def cmd_drift(args) -> int:
+    proj = os.environ.get("CLAUDE_PROJECT_DIR")
+    if not proj:
+        print("error: CLAUDE_PROJECT_DIR not set", file=sys.stderr)
+        return 2
+    sp = Path(proj) / ".mentat" / "scope.md"
+    if not sp.exists():
+        print(f"error: no scope.md at {sp}", file=sys.stderr)
+        return 2
+    _, out = parse_scope(sp)
+    hit = detect_drift(args.text, out)
+    if args.json:
+        print(json.dumps({"hit": None if not hit else {
+            "topic": hit.topic, "phrase": hit.matched_phrase, "snippet": hit.snippet,
+        }}, indent=2))
+        return 0
+    if hit:
+        print(f"DRIFT topic={hit.topic} phrase={hit.matched_phrase!r}")
+        print(f"      snippet: {hit.snippet}")
+        return 1
+    print("clean")
+    return 0
+
+
+def cmd_scope(args) -> int:
+    proj = os.environ.get("CLAUDE_PROJECT_DIR")
+    if not proj:
+        print("error: CLAUDE_PROJECT_DIR not set", file=sys.stderr)
+        return 2
+    sp = Path(proj) / ".mentat" / "scope.md"
+    if not sp.exists():
+        print(f"error: no scope.md at {sp}", file=sys.stderr)
+        return 2
+    print(sp.read_text(encoding="utf-8"))
+    return 0
+
+
+def cmd_replay(args) -> int:
+    bus = InsightBus(home_root(), args.session_id)
+    rows = bus.tail(args.limit)
+    transitions = [r for r in rows if r.type is InsightType.STATE_TRANSITION]
+    if args.json:
+        print(json.dumps([json.loads(r.to_json()) for r in transitions], indent=2))
+        return 0
+    for r in transitions:
+        ts = time.strftime("%H:%M:%S", time.localtime(r.timestamp))
+        p = r.payload or {}
+        print(f"[{ts}] {p.get('prev','-'):10s} -> {p.get('next','-'):10s}  ({p.get('trigger','-')})")
+    return 0
+
+
+def cmd_reset(args) -> int:
+    sid = active_session_id() or "default"
+    p = home_root() / "sessions" / f"{sid}.json"
+    if p.exists():
+        p.unlink()
+    print(f"reset session {sid} (Q-table preserved)")
+    return 0
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(prog="mentat")
+    p.add_argument("--json", action="store_true")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sp = sub.add_parser("status"); sp.set_defaults(fn=cmd_status)
+    sp = sub.add_parser("tail")
+    sp.add_argument("--n", type=int, default=30)
+    sp.set_defaults(fn=cmd_tail)
+    sp = sub.add_parser("q-table"); sp.set_defaults(fn=cmd_qtable)
+    sp = sub.add_parser("insights")
+    sp.add_argument("--type", default=None)
+    sp.add_argument("--state", default=None)
+    sp.add_argument("--limit", type=int, default=100)
+    sp.set_defaults(fn=cmd_insights)
+    sp = sub.add_parser("note")
+    sp.add_argument("text")
+    sp.set_defaults(fn=cmd_note)
+    sp = sub.add_parser("drift")
+    sp.add_argument("text")
+    sp.set_defaults(fn=cmd_drift)
+    sp = sub.add_parser("scope"); sp.set_defaults(fn=cmd_scope)
+    sp = sub.add_parser("replay")
+    sp.add_argument("session_id")
+    sp.add_argument("--limit", type=int, default=500)
+    sp.set_defaults(fn=cmd_replay)
+    sp = sub.add_parser("reset"); sp.set_defaults(fn=cmd_reset)
+
+    args = p.parse_args()
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

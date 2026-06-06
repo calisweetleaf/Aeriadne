@@ -1,0 +1,345 @@
+"""Codex-flavored hook helper for Mentat.
+
+Codex CLI invokes hook scripts as independent subprocesses. The shape is the
+same as Claude Code's hooks (stdin JSON → side effects → stdout JSON / exit
+code), but the field names and event semantics differ in a few important
+ways. This module is the Codex translation layer — every other Codex hook
+imports from here.
+
+Codex stdin payload (per https://developers.openai.com/codex/hooks):
+
+    {
+      "session_id":      "<uuid>",            # current turn / session id
+      "transcript_path": "<abs path | null>", # transcript file, if any
+      "cwd":             "<abs path>",        # session working dir
+      "hook_event_name": "PreToolUse" | ...   # current event
+      "model":           "<slug>",            # active model
+      # Event-specific extras:
+      "tool_name":       "<name>",            # PreToolUse / PostToolUse / PermissionRequest
+      "tool_input":      {...},               # PreToolUse / PostToolUse
+      "tool_response":   {...},               # PostToolUse only
+      "prompt":          "<text>",            # UserPromptSubmit
+      "matcher":         "<string>"           # SessionStart (startup|resume|clear)
+    }
+
+Codex exit-code semantics — same as Claude Code on PreToolUse:
+    0 → allow, optional stdout becomes additional context (UserPromptSubmit)
+    2 → deny / block (stderr is shown as the reason)
+
+The Q-table and insight bus live at the same on-disk path as Claude Code
+(~/.mentat/q_table.sqlite and ~/.mentat/insights/<sid>.jsonl) so a single
+substrate accumulates rewards across all three runtimes.
+
+Per-hook latency budget: < 50 ms. Codex's default timeout is 600 s; Mentat's
+hooks.json caps each hook at 5 s. Errors land in ~/.mentat/log/hook-errors.log
+and on stderr — never silent.
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+import traceback
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Optional
+
+
+# Plugin root resolution — Codex doesn't standardize an env var the way
+# Claude Code does with CLAUDE_PLUGIN_ROOT, so we fall back through:
+#   1. CODEX_PLUGIN_ROOT  (Mentat-specific, set in install_universal.sh)
+#   2. MENTAT_PLUGIN_ROOT (runtime-agnostic override)
+#   3. CLAUDE_PLUGIN_ROOT (compat — Codex may be launched from same shell)
+#   4. The grandparent of this file (adapters/codex/hooks/ → plugin root)
+def _resolve_plugin_root() -> Path:
+    for env_var in ("CODEX_PLUGIN_ROOT", "MENTAT_PLUGIN_ROOT", "CLAUDE_PLUGIN_ROOT"):
+        val = os.environ.get(env_var)
+        if val:
+            return Path(val)
+    # adapters/codex/hooks/_lib.py → adapters/codex/hooks → adapters/codex → adapters → plugin
+    return Path(__file__).resolve().parents[3]
+
+
+_PLUGIN_ROOT = _resolve_plugin_root()
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
+
+from state_machine import (  # noqa: E402
+    Event,
+    EventClass,
+    Insight,
+    InsightBus,
+    InsightType,
+    QTable,
+    Reward,
+    State,
+    StateMachine,
+)
+from state_machine.session import (  # noqa: E402
+    Session,
+    home_root,
+    load_session,
+    save_session,
+    set_active_session,
+)
+from state_machine.drift import detect_drift, parse_scope  # noqa: E402
+
+
+# Codex's first-class tools are Bash, apply_patch, and the MCP namespace.
+# We classify against Mentat's runtime-agnostic vocabulary (READ/WRITE/EXEC/AGENT).
+_READ_TOOLS = {
+    # Codex-native read surfaces (varies by build — keep a permissive set).
+    "Read", "read_file", "Grep", "grep", "Glob", "glob", "LS", "ls",
+    "WebFetch", "WebSearch", "fetch", "search",
+}
+_WRITE_TOOLS = {
+    "apply_patch",        # Codex's canonical file-edit tool
+    "Write", "Edit", "MultiEdit",
+}
+_EXEC_TOOLS = {
+    "Bash", "bash", "shell", "exec_command",
+}
+_AGENT_TOOLS = {
+    "Task", "Agent", "agent", "subagent",
+}
+
+
+def classify_tool(tool_name: str, tool_input: dict) -> EventClass:
+    """Map a Codex tool name into Mentat's coarse event class."""
+    if tool_name in _READ_TOOLS:
+        return EventClass.READ_TOOL
+    if tool_name in _WRITE_TOOLS:
+        return EventClass.WRITE_TOOL
+    if tool_name in _AGENT_TOOLS:
+        return EventClass.AGENT_TOOL
+    if tool_name in _EXEC_TOOLS:
+        return EventClass.EXEC_TOOL
+    # MCP tools arrive as either "mcp__server__tool" (Claude-style) or with a
+    # slash separator depending on Codex version. Try both shapes.
+    n = tool_name.lower()
+    if tool_name.startswith("mcp__") or "/" in tool_name:
+        if any(k in n for k in ("write", "create", "update", "delete", "send",
+                                "publish", "patch")):
+            return EventClass.WRITE_TOOL
+        return EventClass.READ_TOOL
+    return EventClass.READ_TOOL
+
+
+@dataclass
+class HookContext:
+    """Bundled state for a single Codex hook invocation."""
+    payload: dict
+    session_id: str
+    session: Session
+    machine: StateMachine
+    q_table: QTable
+    bus: InsightBus
+
+    def step(self, event: Event) -> tuple[State, State, bool]:
+        prev, nxt, transitioned = self.machine.step(event)
+        self.session.state = nxt
+        self.session.transition_count = self.machine.transition_count
+        self.session.last_event_at = time.time()
+        if event.tool_name:
+            self.session.last_tool = event.tool_name
+        if transitioned:
+            trigger = f"{event.event_class.value}:{event.tool_name or '-'}"
+            self.bus.emit_state_transition(prev.value, nxt.value, trigger)
+        return prev, nxt, transitioned
+
+    def update_chain(self, success: bool) -> None:
+        if success:
+            self.session.chain_depth += 1
+            self.session.last_tool_success = True
+        else:
+            self.session.chain_depth = 0
+            self.session.last_tool_success = False
+
+    def reward(self, tool: str, success: bool, latency_ms: float = 0.0,
+               next_state: Optional[State] = None) -> Reward:
+        r = Reward(success=success, latency_ms=latency_ms,
+                   chain_depth=self.session.chain_depth)
+        self.q_table.update(self.session.state, tool, r,
+                            next_state or self.session.state)
+        self.bus.emit_reward(self.session.state.value, tool, r.value, success)
+        return r
+
+    def save(self) -> None:
+        save_session(self.session)
+
+
+def _session_id_from_payload(payload: dict) -> str:
+    return (
+        payload.get("session_id")
+        or os.environ.get("CODEX_SESSION_ID")
+        or os.environ.get("CLAUDE_SESSION_ID")
+        or "default"
+    )
+
+
+def open_context(payload: dict) -> HookContext:
+    """Reconstruct the per-invocation context from disk."""
+    sid = _session_id_from_payload(payload)
+    set_active_session(sid)
+    session = load_session(sid)
+    machine = StateMachine(state=session.state,
+                           transition_count=session.transition_count)
+    q_table = QTable(home_root() / "q_table.sqlite")
+    bus = InsightBus(home_root(), sid)
+    return HookContext(
+        payload=payload,
+        session_id=sid,
+        session=session,
+        machine=machine,
+        q_table=q_table,
+        bus=bus,
+    )
+
+
+def read_payload() -> dict:
+    global _LAST_PAYLOAD
+    raw = sys.stdin.read()
+    if not raw.strip():
+        _LAST_PAYLOAD = {}
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    _LAST_PAYLOAD = payload
+    return payload
+
+
+CONTEXT_INJECTION_BYTE_CAP = 2048
+
+ADDITIONAL_CONTEXT_EVENTS = {
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "SubagentStart",
+}
+SCRIPT_EVENT_BY_STEM = {
+    "session_start": "SessionStart",
+    "user_prompt_submit": "UserPromptSubmit",
+    "pre_tool_use": "PreToolUse",
+    "post_tool_use": "PostToolUse",
+    "permission_request": "PermissionRequest",
+    "pre_compact": "PreCompact",
+    "post_compact": "PostCompact",
+    "subagent_start": "SubagentStart",
+    "subagent_stop": "SubagentStop",
+    "stop": "Stop",
+    "session_end": "SessionEnd",
+    "stop_failure": "StopFailure",
+}
+_LAST_PAYLOAD = {}
+
+
+def _infer_hook_event(hook_event_name: Optional[str] = None) -> Optional[str]:
+    """Infer the Codex hook event discriminator required for additionalContext."""
+    if hook_event_name:
+        return hook_event_name
+    payload = _LAST_PAYLOAD if isinstance(_LAST_PAYLOAD, dict) else {}
+    for key in ("hook_event_name", "hookEventName"):
+        val = payload.get(key)
+        if isinstance(val, str) and val:
+            return val
+    stem = Path(sys.argv[0]).stem.replace("-", "_").lower()
+    return SCRIPT_EVENT_BY_STEM.get(stem)
+
+
+
+def write_additional_context(msg: str, hook_event_name: Optional[str] = None) -> None:
+    """Emit schema-valid Codex additional-context JSON on stdout.
+
+    Codex CLI 0.136 requires hookSpecificOutput.hookEventName whenever
+    hookSpecificOutput.additionalContext is present. Unsupported events produce
+    no stdout instead of invalid JSON.
+    """
+    event = _infer_hook_event(hook_event_name)
+    if event not in ADDITIONAL_CONTEXT_EVENTS:
+        return
+    if len(msg) > CONTEXT_INJECTION_BYTE_CAP:
+        msg = msg[:CONTEXT_INJECTION_BYTE_CAP - 60] + "\n…[mentat: truncated to fit context cap]"
+    out = {
+        "hookSpecificOutput": {
+            "hookEventName": event,
+            "additionalContext": msg,
+        }
+    }
+    sys.stdout.write(json.dumps(out))
+    sys.stdout.flush()
+
+
+def write_decision(decision: str, reason: str) -> None:
+    """Emit a PreToolUse decision JSON.
+
+    Codex respects the same envelope as Claude Code for tool-gate decisions
+    (`hookSpecificOutput.permissionDecision`). Hooks that want a hard deny
+    can EITHER write this JSON OR exit 2 with the reason on stderr — Mentat
+    uses both belt-and-suspenders style depending on the call site.
+    """
+    out = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision,
+            "permissionDecisionReason": reason,
+        }
+    }
+    sys.stdout.write(json.dumps(out))
+    sys.stdout.flush()
+
+
+def deny_and_exit(reason: str) -> None:
+    """Hard-deny via exit 2 + stderr. Codex treats this the same as Claude Code."""
+    sys.stderr.write(reason)
+    sys.stderr.flush()
+    sys.exit(2)
+
+
+def log_error(prefix: str, exc: BaseException) -> None:
+    """Fail loud. Codex's default is to swallow hook errors; Mentat refuses to be silent."""
+    try:
+        log_dir = Path(os.environ.get("MENTAT_HOME", Path.home() / ".mentat")) / "log"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        line = (
+            f"{time.strftime('%Y-%m-%dT%H:%M:%S')} [codex/{prefix}] "
+            f"{type(exc).__name__}: {exc}\n"
+            f"{traceback.format_exc()}\n---\n"
+        )
+        with (log_dir / "hook-errors.log").open("a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+    print(f"mentat:codex/{prefix}: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
+def safe_main(prefix: str, fn) -> int:
+    """Wrap a hook entry-point. Errors log loudly and return 0 so the turn continues."""
+    try:
+        return fn()
+    except SystemExit:
+        raise
+    except BaseException as e:
+        log_error(prefix, e)
+        return 0
+
+
+def scope_path() -> Optional[Path]:
+    """Locate scope.md. Codex doesn't export CLAUDE_PROJECT_DIR, so we synth one."""
+    proj = (
+        os.environ.get("CLAUDE_PROJECT_DIR")
+        or os.environ.get("CODEX_PROJECT_DIR")
+        or os.getcwd()
+    )
+    if not proj:
+        return None
+    p = Path(proj) / ".mentat" / "scope.md"
+    # Keep the CLAUDE_PROJECT_DIR env var populated downstream so session.py's
+    # project_root() helper writes the active_session pointer in the right place.
+    os.environ.setdefault("CLAUDE_PROJECT_DIR", proj)
+    return p

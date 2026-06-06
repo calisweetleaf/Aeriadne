@@ -1,0 +1,25 @@
+{
+  "name": "aeriadne",
+  "version": "1.0.0",
+  "description": "Aeriadne packages the Constitutional Prompt Framework as an installable skill-activated plugin and private marketplace scaffold for Codex, Claude Code, OpenCode, agent prompts, package registries, and MCP/server-plane visibility.",
+  "author": {
+    "name": "Daeron"
+  },
+  "homepage": "file:///home/daeron/Repositories/Somnus-Intellligence-Stack/Plugins/Aeriadne",
+  "license": "UNLICENSED",
+  "keywords": [
+    "codex",
+    "claude-code",
+    "opencode",
+    "aeriadne",
+    "ariadne",
+    "constitutional-prompt-framework",
+    "prompt-architecture",
+    "agent-constitution",
+    "skill-packaging",
+    "agent-marketplace",
+    "private-marketplace",
+    "mcp"
+  ],
+  "skills": "./skills/"
+}

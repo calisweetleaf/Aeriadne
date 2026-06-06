@@ -1,0 +1,436 @@
+{
+  "metadata": {
+    "rubric_name": "mentat-state-machine-rubric",
+    "rubric_version": "0.2.0",
+    "runs": 25,
+    "timestamp": "2026-05-10T20:48:25Z",
+    "total_duration_ms": 340.37,
+    "pass_threshold": 0.7
+  },
+  "aggregate_score": {
+    "mean": 0.3,
+    "stddev": 0.0,
+    "min": 0.3,
+    "max": 0.3,
+    "n": 25
+  },
+  "criteria": [
+    {
+      "id": "predictive_routing_accuracy",
+      "name": "Predictive-Routing Accuracy",
+      "weight": 0.3,
+      "scenario_count": 3,
+      "raw_score_stats": {
+        "mean": 5.0,
+        "stddev": 0.0,
+        "min": 5,
+        "max": 5,
+        "n": 25
+      },
+      "pass_count_stats": {
+        "mean": 3.0,
+        "stddev": 0.0,
+        "min": 3,
+        "max": 3,
+        "n": 25
+      },
+      "scenario_flake": {
+        "cold_start": {
+          "pass_rate": 1.0,
+          "flake": false,
+          "history": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        "warm_table": {
+          "pass_rate": 1.0,
+          "flake": false,
+          "history": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        "contested_state": {
+          "pass_rate": 1.0,
+          "flake": false,
+          "history": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ]
+        }
+      }
+    }
+  ],
+  "per_run": [
+    {
+      "i": 0,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 1,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 2,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 3,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 4,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 5,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 6,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 7,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 8,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 9,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 10,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 11,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 12,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 13,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 14,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 15,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 16,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 17,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 18,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 19,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 20,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 21,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 22,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 23,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    },
+    {
+      "i": 24,
+      "aggregate_score": 0.3,
+      "passed_aggregate": false,
+      "criterion_scores": [
+        {
+          "id": "predictive_routing_accuracy",
+          "raw_score": 5,
+          "pass_count": 3
+        }
+      ]
+    }
+  ]
+}

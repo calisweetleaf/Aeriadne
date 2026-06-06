@@ -1,0 +1,78 @@
+# Mentat — Codex CLI integration snippet
+#
+# Splice this into ~/.codex/config.toml (Daeron's primary Codex config).
+# The MCP block is the canonical registration; the [hooks] block is an
+# optional inline alternative if you prefer a single-file config over a
+# sibling hooks.json. Keep ONE of the two — Codex will warn on startup if
+# the same layer carries both an inline [hooks] table and a hooks.json.
+#
+# Replace ${CODEX_PLUGIN_ROOT} with the absolute path to where Mentat is
+# installed (e.g. /home/daeron/.codex/plugins/mentat or /home/daeron/Code/mentat/plugin).
+
+# ---- 1. Feature flag (required by Codex for any hooks at all) -------------
+[features]
+codex_hooks = true
+
+# ---- 2. MCP server registration -------------------------------------------
+# Streamable HTTP is NOT used — Mentat ships a stdio server (Python stdlib only).
+[mcp_servers.mentat]
+command = "python3"
+args = ["${CODEX_PLUGIN_ROOT}/mcp_server/__main__.py"]
+startup_timeout_sec = 5
+tool_timeout_sec = 10
+
+# Optional: forward the plugin root through to the MCP process so its hook
+# imports resolve the same state_machine package the adapter hooks use.
+[mcp_servers.mentat.env]
+MENTAT_PLUGIN_ROOT = "${CODEX_PLUGIN_ROOT}"
+
+# ---- 3. Inline hooks (OPTIONAL — alternative to hooks.json) ---------------
+# If you want a single config file, uncomment the block below and DELETE
+# ~/.codex/hooks.json. Otherwise leave this commented and let hooks.json
+# handle the wiring.
+#
+# [[hooks.SessionStart]]
+# matcher = "startup|resume|clear"
+# [[hooks.SessionStart.hooks]]
+# type = "command"
+# command = "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/session_start.py"
+# statusMessage = "mentat: session start"
+# timeout = 5
+#
+# [[hooks.UserPromptSubmit]]
+# [[hooks.UserPromptSubmit.hooks]]
+# type = "command"
+# command = "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/user_prompt_submit.py"
+# statusMessage = "mentat: prompt + drift check"
+# timeout = 5
+#
+# [[hooks.PreToolUse]]
+# matcher = ""
+# [[hooks.PreToolUse.hooks]]
+# type = "command"
+# command = "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/pre_tool_use.py"
+# statusMessage = "mentat: pre tool"
+# timeout = 5
+#
+# [[hooks.PermissionRequest]]
+# matcher = ""
+# [[hooks.PermissionRequest.hooks]]
+# type = "command"
+# command = "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/permission_request.py"
+# statusMessage = "mentat: permission request"
+# timeout = 5
+#
+# [[hooks.PostToolUse]]
+# matcher = ""
+# [[hooks.PostToolUse.hooks]]
+# type = "command"
+# command = "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/post_tool_use.py"
+# statusMessage = "mentat: post tool + Q-update"
+# timeout = 5
+#
+# [[hooks.Stop]]
+# [[hooks.Stop.hooks]]
+# type = "command"
+# command = "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/stop.py"
+# statusMessage = "mentat: stop + handoff"
+# timeout = 5

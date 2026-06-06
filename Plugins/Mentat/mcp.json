@@ -1,0 +1,10 @@
+{
+  "_note": "Rename this file to .mcp.json after extracting the plugin. The HyperAgent sandbox blocks dotfile names; the actual plugin install path expects the leading dot.",
+  "mcpServers": {
+    "mentat": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp_server/__main__.py"]
+    }
+  }
+}

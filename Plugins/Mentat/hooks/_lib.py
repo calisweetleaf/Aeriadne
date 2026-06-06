@@ -1,0 +1,318 @@
+"""Shared hook helpers.
+
+Every hook script in this directory is invoked by Claude Code as an independent
+subprocess. They all follow the same shape:
+
+    1. Read JSON from stdin (Claude Code-supplied event payload).
+    2. Reconstruct the state machine + Q-table from disk.
+    3. Step the FSA, update the Q-table, emit insights.
+    4. Optionally return a JSON decision (PreToolUse only).
+    5. Exit 0 on success, 2 to block (PreToolUse only).
+
+Latency target per hook: < 50 ms. SQLite + small JSON files makes this trivial.
+
+Per Aegis audit (2026-05-10): every Mentat hook uses timeout: 5 in hooks.json
+(default is 600 seconds, fail-open) so a stuck hook can't freeze the session.
+Errors are logged to stderr and to ~/.mentat/log/hook-errors.log so silent
+failures don't accumulate. Hook output piped to context-injecting events
+(SessionStart, UserPromptSubmit) is bounded to <2 KB to avoid burning context.
+
+webhook_engine integration (v0.2): hooks that emit insights of interest to
+the disler-compatible dashboard call `emit_safe(insight)` at the very end,
+after `ctx.save()`. emit_safe is best-effort: any failure (config missing,
+network down, DLQ disk full) is swallowed silently so a misbehaving webhook
+endpoint can never block a Claude Code session. See
+plugin/webhook_engine/ for the envelope, HMAC signing, and DLQ.
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+import traceback
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Optional
+
+
+# Make the bundled state_machine package importable when Claude Code invokes
+# the hook from an arbitrary cwd. ${CLAUDE_PLUGIN_ROOT} resolves to the plugin
+# install dir at runtime (Anthropic-documented).
+_PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parent.parent))
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
+
+from state_machine import (  # noqa: E402
+    Event,
+    EventClass,
+    Insight,
+    InsightBus,
+    InsightType,
+    QTable,
+    Reward,
+    State,
+    StateMachine,
+)
+from state_machine.session import (  # noqa: E402
+    Session,
+    home_root,
+    load_session,
+    save_session,
+    set_active_session,
+)
+from state_machine.drift import detect_drift, parse_scope  # noqa: E402
+
+
+# Event-class classification for tool names. Tools not in this map default to
+# READ_TOOL (least-side-effects assumption).
+_READ_TOOLS = {
+    "Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch",
+    "ExaSearch", "ExaContents", "ExaResearch", "ExaFindSimilar",
+    "NotebookRead", "BrowserGetContent", "BrowserExtract", "BrowserObserve",
+    "BrowserScreenshot", "FetchStoredFile", "ReadDocument",
+    "SearchKnowledge", "GetKnowledgeDetails", "SearchDocuments",
+    "SearchTables", "GetTable", "SearchRubrics", "GetRubricDetails",
+    "GetAgentConfig", "SearchIntegrations",
+}
+_WRITE_TOOLS = {
+    "Edit", "MultiEdit", "Write", "NotebookEdit",
+    "UpdateDocument", "UpdateMemory", "UpdateRubric", "UpdateSkillAndScripts",
+    "AddTableRows", "UpdateTableCell", "DeleteTableRows", "CreateTable",
+    "CreateDocument", "CreateMemory", "CreateSkill", "CreateAgentConfig",
+    "UpdateAgentConfig", "RestoreAgentVersion", "RestoreSkillVersion",
+    "RestoreMemoryVersion",
+}
+_EXEC_TOOLS = {"Bash", "ExecuteIntegration", "RunWithCredentials"}
+_AGENT_TOOLS = {"Task", "Agent"}
+
+
+def classify_tool(tool_name: str, tool_input: dict) -> EventClass:
+    if tool_name in _READ_TOOLS:
+        return EventClass.READ_TOOL
+    if tool_name in _WRITE_TOOLS:
+        return EventClass.WRITE_TOOL
+    if tool_name in _AGENT_TOOLS:
+        return EventClass.AGENT_TOOL
+    if tool_name in _EXEC_TOOLS:
+        return EventClass.EXEC_TOOL
+    if tool_name.startswith("mcp__"):
+        # MCP tools default to read unless the name suggests otherwise.
+        n = tool_name.lower()
+        if any(k in n for k in ("write", "create", "update", "delete", "send", "publish")):
+            return EventClass.WRITE_TOOL
+        return EventClass.READ_TOOL
+    return EventClass.READ_TOOL
+
+
+@dataclass
+class HookContext:
+    """Bundled state for a single hook invocation."""
+    payload: dict
+    session_id: str
+    session: Session
+    machine: StateMachine
+    q_table: QTable
+    bus: InsightBus
+
+    def step(self, event: Event) -> tuple[State, State, bool]:
+        prev, nxt, transitioned = self.machine.step(event)
+        self.session.state = nxt
+        self.session.transition_count = self.machine.transition_count
+        self.session.last_event_at = time.time()
+        if event.tool_name:
+            self.session.last_tool = event.tool_name
+        if transitioned:
+            trigger = f"{event.event_class.value}:{event.tool_name or '-'}"
+            self.bus.emit_state_transition(prev.value, nxt.value, trigger)
+        return prev, nxt, transitioned
+
+    def update_chain(self, success: bool) -> None:
+        if success:
+            self.session.chain_depth += 1
+            self.session.last_tool_success = True
+        else:
+            self.session.chain_depth = 0
+            self.session.last_tool_success = False
+
+    def reward(self, tool: str, success: bool, latency_ms: float = 0.0,
+               next_state: Optional[State] = None) -> Reward:
+        r = Reward(success=success, latency_ms=latency_ms,
+                   chain_depth=self.session.chain_depth)
+        self.q_table.update(self.session.state, tool, r,
+                            next_state or self.session.state)
+        self.bus.emit_reward(self.session.state.value, tool, r.value, success)
+        return r
+
+    def save(self) -> None:
+        save_session(self.session)
+
+
+def open_context(payload: dict) -> HookContext:
+    """Reconstruct the per-invocation context from disk."""
+    sid = payload.get("session_id") or os.environ.get("CLAUDE_SESSION_ID") or "default"
+    set_active_session(sid)
+    session = load_session(sid)
+    machine = StateMachine(state=session.state, transition_count=session.transition_count)
+    q_table = QTable(home_root() / "q_table.sqlite")
+    bus = InsightBus(home_root(), sid)
+    return HookContext(
+        payload=payload,
+        session_id=sid,
+        session=session,
+        machine=machine,
+        q_table=q_table,
+        bus=bus,
+    )
+
+
+def read_payload() -> dict:
+    global _LAST_PAYLOAD
+    raw = sys.stdin.read()
+    if not raw.strip():
+        _LAST_PAYLOAD = {}
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    _LAST_PAYLOAD = payload
+    return payload
+
+
+def write_decision(decision: str, reason: str) -> None:
+    """PreToolUse JSON decision. decision in {'allow', 'deny', 'ask'}."""
+    out = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision,
+            "permissionDecisionReason": reason,
+        }
+    }
+    sys.stdout.write(json.dumps(out))
+    sys.stdout.flush()
+
+
+CONTEXT_INJECTION_BYTE_CAP = 2048
+
+ADDITIONAL_CONTEXT_EVENTS = {
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "SubagentStart",
+}
+SCRIPT_EVENT_BY_STEM = {
+    "session_start": "SessionStart",
+    "user_prompt_submit": "UserPromptSubmit",
+    "pre_tool_use": "PreToolUse",
+    "post_tool_use": "PostToolUse",
+    "permission_request": "PermissionRequest",
+    "pre_compact": "PreCompact",
+    "post_compact": "PostCompact",
+    "subagent_start": "SubagentStart",
+    "subagent_stop": "SubagentStop",
+    "stop": "Stop",
+    "session_end": "SessionEnd",
+    "stop_failure": "StopFailure",
+}
+_LAST_PAYLOAD = {}
+
+
+def _infer_hook_event(hook_event_name: Optional[str] = None) -> Optional[str]:
+    """Infer the Codex hook event discriminator required for additionalContext."""
+    if hook_event_name:
+        return hook_event_name
+    payload = _LAST_PAYLOAD if isinstance(_LAST_PAYLOAD, dict) else {}
+    for key in ("hook_event_name", "hookEventName"):
+        val = payload.get(key)
+        if isinstance(val, str) and val:
+            return val
+    stem = Path(sys.argv[0]).stem.replace("-", "_").lower()
+    return SCRIPT_EVENT_BY_STEM.get(stem)
+
+
+
+def write_user_message(msg: str, hook_event_name: Optional[str] = None) -> None:
+    """Emit schema-valid Codex/Claude additionalContext JSON when supported.
+
+    Codex CLI 0.136 requires hookSpecificOutput.hookEventName whenever a hook
+    emits hookSpecificOutput.additionalContext. Unsupported events intentionally
+    produce no stdout so hooks cannot fail validation.
+    """
+    event = _infer_hook_event(hook_event_name)
+    if event not in ADDITIONAL_CONTEXT_EVENTS:
+        return
+    if len(msg) > CONTEXT_INJECTION_BYTE_CAP:
+        msg = msg[:CONTEXT_INJECTION_BYTE_CAP - 60] + "\n…[mentat: truncated to fit context cap]"
+    out = {
+        "hookSpecificOutput": {
+            "hookEventName": event,
+            "additionalContext": msg,
+        }
+    }
+    sys.stdout.write(json.dumps(out))
+    sys.stdout.flush()
+
+
+def log_error(prefix: str, exc: BaseException) -> None:
+    """Fail loud: write the traceback to ~/.mentat/log/hook-errors.log AND stderr.
+
+    Claude Code's default fail-open hook semantics will eat silent exceptions.
+    Mentat refuses to be silent — every error gets a file trail.
+    """
+    try:
+        log_dir = Path(os.environ.get("MENTAT_HOME", Path.home() / ".mentat")) / "log"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        line = (
+            f"{time.strftime('%Y-%m-%dT%H:%M:%S')} [{prefix}] "
+            f"{type(exc).__name__}: {exc}\n"
+            f"{traceback.format_exc()}\n---\n"
+        )
+        with (log_dir / "hook-errors.log").open("a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+    print(f"mentat:{prefix}: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
+def safe_main(prefix: str, fn) -> int:
+    """Wrap a hook entry-point. On any exception, log loud and return 0
+    so the session continues. Mentat must never block work on its own bug."""
+    try:
+        return fn()
+    except SystemExit:
+        raise
+    except BaseException as e:
+        log_error(prefix, e)
+        return 0
+
+
+def scope_path() -> Optional[Path]:
+    proj = os.environ.get("CLAUDE_PROJECT_DIR")
+    if not proj:
+        return None
+    return Path(proj) / ".mentat" / "scope.md"
+
+
+def emit_safe(insight: Insight, session_id: Optional[str] = None) -> None:
+    """Forward an Insight to the webhook engine without ever blocking the hook.
+
+    Every exception is swallowed — webhook latency, config absence, DLQ disk
+    failures, import errors must not be allowed to interfere with the
+    session. The webhook_engine module is itself defensive but we add a
+    belt-and-braces try/except here so the hook layer never sees a webhook
+    error path.
+
+    Call this AFTER ctx.save() so the on-disk insight log is the source of
+    truth even if the webhook fails.
+    """
+    try:
+        from webhook_engine import emit as _emit  # noqa: WPS433
+        _emit(insight, session_id=session_id)
+    except Exception:  # pylint: disable=broad-except
+        # Intentionally silent. Webhook delivery is observational, not
+        # load-bearing — never block a hook on it.
+        pass

@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""mentat-webhooks — operator CLI for the Mentat v0.2 webhook engine.
+
+Separate executable from `mentat` because the inspector binary should not
+grow extra dependencies / subcommands for an optional subsystem.
+
+Subcommands:
+    status        show config + DLQ depth
+    test          send a synthetic envelope and report status
+    drain [--n]   manually retry N entries from the DLQ
+    tail-dlq [--n] show last N failed envelopes
+
+All subcommands accept --json for machine-readable output.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+# Make the plugin importable.
+_HERE = Path(__file__).resolve().parent
+_PLUGIN_ROOT = _HERE.parent
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
+
+from webhook_engine import (  # noqa: E402
+    DislerEnvelope,
+    configure,
+    drain_dlq,
+    load_config,
+)
+from webhook_engine import dlq as dlq_mod  # noqa: E402
+from webhook_engine import emitter as emitter_mod  # noqa: E402
+
+
+def _config_summary(cfg) -> dict:
+    return {
+        "enabled": cfg.enabled,
+        "max_payload_bytes": cfg.max_payload_bytes,
+        "endpoints": [
+            {
+                "url": e.url,
+                "secret_env": e.secret_env,
+                "secret_set": bool(os.environ.get(e.secret_env)),
+                "events_filter": e.events_filter,
+            }
+            for e in cfg.endpoints
+        ],
+    }
+
+
+def cmd_status(args) -> int:
+    cfg = load_config()
+    depth = dlq_mod.depth()
+    out = {
+        "config": _config_summary(cfg),
+        "dlq": depth,
+        "dlq_path": str(dlq_mod._dlq_path()),
+    }
+    if args.json:
+        print(json.dumps(out, indent=2))
+    else:
+        print(f"enabled={cfg.enabled}  endpoints={len(cfg.endpoints)}  "
+              f"max_payload_bytes={cfg.max_payload_bytes}")
+        for e in cfg.endpoints:
+            secret_marker = "set" if os.environ.get(e.secret_env) else "MISSING"
+            evt = ",".join(e.events_filter) if e.events_filter else "*"
+            print(f"  -> {e.url}  secret({e.secret_env})={secret_marker}  events={evt}")
+        print(f"dlq: pending={depth['pending']}  dead={depth['dead']}  "
+              f"total={depth['total']}")
+        print(f"dlq_path: {dlq_mod._dlq_path()}")
+    return 0
+
+
+def cmd_test(args) -> int:
+    """Send a synthetic envelope through the real emitter path."""
+    cfg = load_config()
+    configure(cfg)
+    # Build a minimal synthetic Insight via duck typing.
+    class _T:
+        def __init__(self, v): self.value = v
+    class _I:
+        type = _T("note")
+        payload = {"text": "mentat-webhooks test", "synthetic": True}
+        state = "PLANNING"
+        timestamp = time.time()
+        seq = 0
+        id = "test00000000"
+        session_id = args.session_id
+
+    result = emitter_mod.emit(_I(), session_id=args.session_id)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"delivered={result['delivered']}  "
+              f"dlq={result['dlq']}  "
+              f"skipped={result['skipped']}  "
+              f"error={result.get('error')}")
+    # exit nonzero if nothing delivered and nothing skipped on purpose.
+    if not cfg.enabled or not cfg.endpoints:
+        # Skipped-by-config is success for `test`.
+        return 0
+    return 0 if result["delivered"] >= 1 else 1
+
+
+def cmd_drain(args) -> int:
+    result = drain_dlq(max_n=args.n)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"examined={result['examined']}  "
+              f"succeeded={result['succeeded']}  "
+              f"retried={result['retried']}  "
+              f"dead={result['dead']}")
+    return 0
+
+
+def cmd_tail_dlq(args) -> int:
+    rows = dlq_mod.tail(n=args.n)
+    if args.json:
+        print(json.dumps(rows, indent=2, default=str))
+        return 0
+    if not rows:
+        print("(dlq empty)")
+        return 0
+    for r in rows:
+        ts = time.strftime("%H:%M:%S", time.localtime(r["last_failed_at"]))
+        nxt = time.strftime("%H:%M:%S", time.localtime(r["next_retry_at"]))
+        env = r["envelope"]
+        et = env.get("hook_event_type", "?")
+        print(f"[{ts}] {r['status']:7s} attempts={r['attempts']}  "
+              f"next={nxt}  type={et}  err={r['error']}  -> {r['endpoint_url']}")
+    return 0
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(prog="mentat-webhooks")
+    p.add_argument("--json", action="store_true", help="machine-readable output")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sp = sub.add_parser("status", help="show config + DLQ depth")
+    sp.set_defaults(fn=cmd_status)
+
+    sp = sub.add_parser("test", help="send a synthetic envelope")
+    sp.add_argument("--session-id", default="cli-test", help="session id for the synthetic envelope")
+    sp.set_defaults(fn=cmd_test)
+
+    sp = sub.add_parser("drain", help="manually drain N entries from the DLQ")
+    sp.add_argument("--n", type=int, default=50)
+    sp.set_defaults(fn=cmd_drain)
+
+    sp = sub.add_parser("tail-dlq", help="show last N failed envelopes")
+    sp.add_argument("--n", type=int, default=20)
+    sp.set_defaults(fn=cmd_tail_dlq)
+
+    args = p.parse_args()
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

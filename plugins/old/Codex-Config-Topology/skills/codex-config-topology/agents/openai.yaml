@@ -1,3 +1,0 @@
-interface:
-  display_name: "Codex Config Topology"
-  short_description: "edit doctrine-aware codex control planes and bb7 entry order"

@@ -1,0 +1,26 @@
+{
+  "name": "mentat",
+  "version": "0.2.0",
+  "description": "Mentat — session-scoped state machine, Q-table, and insight bus for the Gemini CLI. Cross-runtime substrate shared with Claude Code and Codex.",
+  "contextFileName": "GEMINI.md",
+  "mcpServers": {
+    "mentat": {
+      "command": "python3",
+      "args": ["${GEMINI_PLUGIN_ROOT}/mcp_server/__main__.py"],
+      "env": {
+        "MENTAT_PLUGIN_ROOT": "${GEMINI_PLUGIN_ROOT}"
+      },
+      "timeout": 10000,
+      "trust": true,
+      "includeTools": [
+        "state",
+        "insights",
+        "q_best",
+        "session_summary"
+      ]
+    }
+  },
+  "hooks": {
+    "$ref": "./hooks/hooks.json"
+  }
+}

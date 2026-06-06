@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+"""Mentat monitors CLI — separate from `bin/mentat` so it never conflicts.
+
+Subcommands:
+    mentat-monitors run-once <name>   Run a single monitor by name.
+    mentat-monitors schedule          Print systemd-timer and crontab recipes
+                                      derived from monitors.json.
+    mentat-monitors status            Show last-run timestamps from
+                                      ~/.mentat/log/.
+
+The cadence is driven by Claude Code's monitor system (monitors.json), but
+when the user wants to run the same monitors via systemd timers or cron on
+a vanilla Kubuntu box, `schedule` emits ready-to-copy unit files.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+_PLUGIN_ROOT = _HERE.parent
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
+
+from state_machine.session import home_root  # noqa: E402
+
+
+MANIFEST = _PLUGIN_ROOT / "monitors" / "monitors.json"
+
+
+def _load_manifest() -> dict:
+    if not MANIFEST.exists():
+        raise FileNotFoundError(f"manifest missing: {MANIFEST}")
+    return json.loads(MANIFEST.read_text(encoding="utf-8"))
+
+
+def _resolve_command(spec: dict) -> list[str]:
+    """Resolve ${CLAUDE_PLUGIN_ROOT} in args against the actual plugin root."""
+    cmd = [spec["command"]]
+    for arg in spec.get("args", []):
+        cmd.append(arg.replace("${CLAUDE_PLUGIN_ROOT}", str(_PLUGIN_ROOT)))
+    return cmd
+
+
+def _last_run_path(name: str) -> Path:
+    d = home_root() / "log"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{name}.last-run"
+
+
+def _record_run(name: str, rc: int, duration_s: float) -> None:
+    payload = {
+        "name": name,
+        "rc": rc,
+        "duration_s": round(duration_s, 3),
+        "finished_at": time.time(),
+    }
+    _last_run_path(name).write_text(
+        json.dumps(payload, separators=(",", ":")), encoding="utf-8"
+    )
+
+
+def cmd_run_once(args) -> int:
+    manifest = _load_manifest()
+    target = next(
+        (m for m in manifest.get("monitors", []) if m["name"] == args.name),
+        None,
+    )
+    if target is None:
+        names = [m["name"] for m in manifest.get("monitors", [])]
+        print(
+            f"error: monitor {args.name!r} not in manifest. available: {names}",
+            file=sys.stderr,
+        )
+        return 2
+    if not target.get("enabled", True):
+        print(f"warning: monitor {args.name!r} is disabled in manifest", file=sys.stderr)
+
+    cmd = _resolve_command(target)
+    env = os.environ.copy()
+    env.setdefault("CLAUDE_PLUGIN_ROOT", str(_PLUGIN_ROOT))
+
+    start = time.monotonic()
+    try:
+        proc = subprocess.run(cmd, env=env, check=False)
+        rc = proc.returncode
+    except FileNotFoundError as exc:
+        print(f"error: cannot exec {cmd!r}: {exc}", file=sys.stderr)
+        return 127
+    duration = time.monotonic() - start
+    _record_run(target["name"], rc, duration)
+    print(f"{target['name']}: rc={rc} duration={duration:.3f}s")
+    return rc
+
+
+def cmd_schedule(args) -> int:
+    manifest = _load_manifest()
+    monitors = manifest.get("monitors", [])
+
+    if args.format == "cron":
+        _emit_cron(monitors)
+    elif args.format == "systemd":
+        _emit_systemd(monitors)
+    else:
+        # Default: emit both, divided by clear banners
+        print("# === crontab ===")
+        _emit_cron(monitors)
+        print()
+        print("# === systemd timers ===")
+        _emit_systemd(monitors)
+    return 0
+
+
+def _interval_to_cron(seconds: int) -> str:
+    """Best-effort conversion of an interval-in-seconds to a cron expression."""
+    if seconds <= 0:
+        return "* * * * *"
+    if seconds < 60:
+        return "* * * * *"  # cron minimum granularity is 1 minute
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"*/{minutes} * * * *"
+    hours = minutes // 60
+    if hours < 24:
+        return f"0 */{hours} * * *"
+    return "0 3 * * *"  # daily, 03:00 local
+
+
+def _emit_cron(monitors: list[dict]) -> None:
+    plugin_root = str(_PLUGIN_ROOT)
+    print("# Mentat monitors — copy into `crontab -e` on Kubuntu.")
+    print(f"# CLAUDE_PLUGIN_ROOT={plugin_root}")
+    print(f"CLAUDE_PLUGIN_ROOT={plugin_root}")
+    print(f"MENTAT_BIN={plugin_root}/bin/mentat-monitors")
+    for m in monitors:
+        if not m.get("enabled", True):
+            print(f"# (disabled) {m['name']}")
+            continue
+        sched = _interval_to_cron(int(m.get("interval", 0)))
+        print(f"{sched} python3 $MENTAT_BIN run-once {m['name']} "
+              f">> $HOME/.mentat/log/{m['name']}.cron.log 2>&1")
+
+
+def _emit_systemd(monitors: list[dict]) -> None:
+    plugin_root = str(_PLUGIN_ROOT)
+    print("# Mentat monitors — systemd user units. Save each block under")
+    print(f"# ~/.config/systemd/user/, then run:")
+    print("#   systemctl --user daemon-reload")
+    print("#   systemctl --user enable --now mentat-<name>.timer")
+    for m in monitors:
+        if not m.get("enabled", True):
+            print(f"\n# (disabled) {m['name']}")
+            continue
+        name = m["name"]
+        interval = int(m.get("interval", 60))
+        print(f"\n# ---- ~/.config/systemd/user/mentat-{name}.service ----")
+        print("[Unit]")
+        print(f"Description=Mentat monitor: {name}")
+        print("After=default.target")
+        print("\n[Service]")
+        print("Type=oneshot")
+        print(f"Environment=CLAUDE_PLUGIN_ROOT={plugin_root}")
+        print(
+            f"ExecStart=/usr/bin/python3 {plugin_root}/bin/mentat-monitors "
+            f"run-once {name}"
+        )
+        print(f"\n# ---- ~/.config/systemd/user/mentat-{name}.timer ----")
+        print("[Unit]")
+        print(f"Description=Mentat monitor timer: {name}")
+        print("\n[Timer]")
+        if interval >= 86400:
+            print("OnCalendar=daily")
+            print("Persistent=true")
+        elif interval >= 3600:
+            hours = interval // 3600
+            print(f"OnBootSec=5min")
+            print(f"OnUnitActiveSec={hours}h")
+        else:
+            print(f"OnBootSec=1min")
+            print(f"OnUnitActiveSec={interval}s")
+        print(f"Unit=mentat-{name}.service")
+        print("\n[Install]")
+        print("WantedBy=timers.target")
+
+
+def cmd_status(args) -> int:
+    manifest = _load_manifest()
+    monitors = manifest.get("monitors", [])
+    rows: list[dict] = []
+    for m in monitors:
+        p = _last_run_path(m["name"])
+        last = None
+        if p.exists():
+            try:
+                last = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                last = {"error": "unreadable"}
+        rows.append(
+            {
+                "name": m["name"],
+                "interval_s": m.get("interval"),
+                "enabled": m.get("enabled", True),
+                "last_run": last,
+            }
+        )
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    for r in rows:
+        last = r["last_run"]
+        if not last:
+            tail = "never run"
+        elif "error" in last:
+            tail = "last-run file unreadable"
+        else:
+            ago = time.time() - last.get("finished_at", 0)
+            tail = (
+                f"last rc={last.get('rc')} "
+                f"dur={last.get('duration_s')}s "
+                f"({int(ago)}s ago)"
+            )
+        flag = "enabled" if r["enabled"] else "disabled"
+        print(
+            f"{r['name']:20s}  interval={r['interval_s']:>6}s  "
+            f"{flag:8s}  {tail}"
+        )
+    return 0
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(
+        prog="mentat-monitors",
+        description="Run, schedule, and inspect Mentat background monitors.",
+    )
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sp = sub.add_parser("run-once", help="Run a single monitor by name.")
+    sp.add_argument("name")
+    sp.set_defaults(fn=cmd_run_once)
+
+    sp = sub.add_parser(
+        "schedule",
+        help="Emit cron + systemd recipes derived from monitors.json.",
+    )
+    sp.add_argument(
+        "--format",
+        choices=["cron", "systemd", "both"],
+        default="both",
+    )
+    sp.set_defaults(fn=cmd_schedule)
+
+    sp = sub.add_parser(
+        "status", help="Show last-run timestamps for each monitor."
+    )
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(fn=cmd_status)
+
+    args = p.parse_args()
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

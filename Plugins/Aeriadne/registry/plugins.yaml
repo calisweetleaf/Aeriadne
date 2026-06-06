@@ -1,0 +1,41 @@
+plugins:
+  - id: aeriadne
+    name: Aeriadne
+    type: skill-activated-plugin
+    status: private-v1
+    version: 1.0.0
+    canonical_path: /home/daeron/Repositories/Somnus-Intellligence-Stack/plugins/Aeriadne
+    owner: Daeron
+    aliases:
+      - Ariadne
+      - cpf-plugin-ariadne
+      - CPF-Plugin-Ariadne
+    supersedes:
+      - legacy CPF plugin shell
+      - cpf-plugin-ariadne
+    clients:
+      codex: supported
+      claude_code: adapter-docs
+      opencode: adapter-docs
+      grok_build: adapter-docs
+    includes:
+      skills:
+        - constitutional-prompt-framework
+        - aeriadne-marketplace-operator
+      agent_sets:
+        - aeriadne-subagents
+      mcp_servers:
+        - sovereign-bb7
+    validation_status: validated
+    validation_date: "2026-06-05"
+    validation_evidence:
+      package_validator: PASS
+      json_manifests: PASS
+      toml_manifest: PASS
+      cpf_skill_validator: PASS
+      stale_path_scan: PASS
+      legacy_archive_scan: PASS
+      cpf_linter: previous PASS
+      cpf_score: previous 87/100 production candidate
+      cpf_static_evals: previous PASS
+      cpf_render_fixture: previous PASS

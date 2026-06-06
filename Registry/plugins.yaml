@@ -1,0 +1,47 @@
+# Aeriadne Plugin Registry - Private v1
+#
+# This file catalogs all installable plugin packages in the Somnus-Intelligence-Stack.
+# Every entry must have a unique ID and a canonical source path.
+
+plugins:
+  - id: aeriadne
+    name: Aeriadne
+    version: 1.0.0
+    type: skill-activated-plugin
+    status: private-v1
+    source: Plugins/Aeriadne
+    description: "The marketplace operator and CPF skill package."
+    compatibility:
+      codex: true
+      claude_code: true
+      opencode: true
+    includes:
+      skills:
+        - constitutional-prompt-framework
+        - aeriadne-marketplace-operator
+
+  - id: ctmv3
+    name: Cognitive-Topology-Map
+    version: 3.0.0
+    type: activation-package
+    status: alpha
+    source: Plugins/Cognitive-Topology-Map
+    description: "Workspace activation and codebase topology engine."
+    compatibility:
+      codex: true
+      claude_code: true
+      opencode: true
+    includes:
+      skills:
+        - ctmv3
+
+  - id: mentat
+    name: Mentat
+    version: 2.0.0
+    type: runtime-substrate
+    status: operational
+    source: Plugins/Mentat
+    description: "Live session instrumentation and runtime substrate."
+    compatibility:
+      codex: true
+      claude_code: true

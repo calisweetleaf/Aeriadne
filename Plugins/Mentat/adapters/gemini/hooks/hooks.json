@@ -1,0 +1,174 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-session-start",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/session_start.py",
+            "description": "Mentat: load FSA + replay handoff on session boot",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-session-resume",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/session_start.py",
+            "description": "Mentat: load FSA + replay handoff on session resume",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-session-clear",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/session_start.py",
+            "description": "Mentat: reset FSA after clear",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-session-end",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/session_end.py",
+            "description": "Mentat: write handoff + tag SESSION_END",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-before-agent",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/before_agent.py",
+            "description": "Mentat: drift check + Q-route hint on prompt submit",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-after-agent",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/after_agent.py",
+            "description": "Mentat: tag turn close",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "BeforeModel": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-before-model",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/before_model.py",
+            "description": "Mentat: record model + state at model call",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "AfterModel": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-after-model",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/after_model.py",
+            "description": "Mentat: tag model response",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "BeforeToolSelection": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-before-tool-selection",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/before_tool_selection.py",
+            "description": "Mentat: record Q-best alongside available tool set",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-before-tool",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/before_tool.py",
+            "description": "Mentat: classify + drift guard (deny on drift)",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-after-tool",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/after_tool.py",
+            "description": "Mentat: reward + Q-update + entropy-spike detection",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PreCompress": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-pre-compress",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/pre_compress.py",
+            "description": "Mentat: snapshot FSA + Q-best to handoff.md before compression",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "mentat-notification",
+            "command": "python3 ${GEMINI_PLUGIN_ROOT}/adapters/gemini/hooks/notification.py",
+            "description": "Mentat: tag system notifications in the bus",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

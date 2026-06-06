@@ -1,6 +1,0 @@
-interface:
-  display_name: "Constitutional Prompt Framework"
-  short_description: "Design, harden, audit, and package production-grade agent constitutions."
-  default_prompt: "Use $constitutional-prompt-framework to derive a production-grade single-file agent constitution for my target agent. Include design notes, full prompt, audit score, red-team probes, and maintenance plan."
-policy:
-  allow_implicit_invocation: true

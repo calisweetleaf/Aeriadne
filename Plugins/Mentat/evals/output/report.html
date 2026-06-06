@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mentat eval report — 2026-05-10T20:49:29Z</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@500;700&display=swap">
+<style>
+:root {
+  --bg-0: #07080d;
+  --bg-1: #0d111c;
+  --bg-2: #141a2b;
+  --surface: rgba(255, 255, 255, 0.03);
+  --surface-strong: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --text-0: #f5f6fb;
+  --text-1: #c4c8d4;
+  --text-2: #8189a0;
+  --text-3: #545b73;
+  --accent-blue: #3b82f6;
+  --accent-violet: #8b5cf6;
+  --accent-green: #34d399;
+  --accent-red: #f87171;
+  --accent-amber: #fbbf24;
+  --grad-brand: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  --grad-pass: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  --grad-fail: linear-gradient(135deg, #b91c1c 0%, #f87171 100%);
+  --shadow-card: 0 1px 0 rgba(255,255,255,0.04) inset,
+                 0 20px 50px -20px rgba(0,0,0,0.7);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background:
+    radial-gradient(at 20% -10%, rgba(59,130,246,0.10), transparent 50%),
+    radial-gradient(at 80% 110%, rgba(139,92,246,0.10), transparent 50%),
+    var(--bg-0);
+  color: var(--text-0);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+main {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 56px 32px 80px;
+}
+
+/* ---------- Header ---------- */
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 36px 40px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  box-shadow: var(--shadow-card);
+  margin-bottom: 36px;
+  position: relative;
+  overflow: hidden;
+}
+
+.header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--grad-brand);
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-family: "Orbitron", "Inter", sans-serif;
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  color: var(--text-2);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* Aggregate verdict block */
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  margin-top: 12px;
+  padding: 24px 28px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-1);
+}
+
+.score-ring {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+}
+
+.score-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+
+.score-ring .track {
+  fill: none;
+  stroke: rgba(255,255,255,0.08);
+  stroke-width: 12;
+}
+
+.score-ring .progress {
+  fill: none;
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke: url(#brandGradient);
+}
+
+.score-ring .label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.score-ring .label .value {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-0);
+}
+
+.score-ring .label .of {
+  color: var(--text-2);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.verdict-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.verdict-label {
+  font-family: "Orbitron", "Inter", sans-serif;
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.verdict-label.pass { color: var(--accent-green); }
+.verdict-label.fail { color: var(--accent-red); }
+
+.verdict-meta {
+  color: var(--text-2);
+  font-size: 13px;
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* ---------- Criterion cards ---------- */
+.criteria {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.criterion {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-1);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.criterion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 28px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.criterion-head-left h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-0);
+  margin-bottom: 4px;
+}
+
+.criterion-head-left .id {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: 0.04em;
+}
+
+.criterion-grade {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.grade-pill {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.grade-pill.g-5 { background: rgba(52, 211, 153, 0.18); color: var(--accent-green); border-color: rgba(52,211,153,0.4); }
+.grade-pill.g-4 { background: rgba(96, 165, 250, 0.18); color: #93c5fd; border-color: rgba(96,165,250,0.4); }
+.grade-pill.g-3 { background: rgba(251, 191, 36, 0.18); color: var(--accent-amber); border-color: rgba(251,191,36,0.4); }
+.grade-pill.g-2 { background: rgba(251, 146, 60, 0.18); color: #fb923c; border-color: rgba(251,146,60,0.4); }
+.grade-pill.g-1 { background: rgba(248, 113, 113, 0.18); color: var(--accent-red); border-color: rgba(248,113,113,0.4); }
+.grade-pill.g-0 { background: rgba(248, 113, 113, 0.28); color: var(--accent-red); border-color: rgba(248,113,113,0.5); }
+
+.criterion-meta {
+  font-size: 12px;
+  color: var(--text-2);
+  letter-spacing: 0.04em;
+}
+
+.criterion-body { padding: 24px 28px; }
+
+.criterion-description {
+  color: var(--text-1);
+  font-size: 14px;
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+.score-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.score-bar-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  background: var(--grad-brand);
+  border-radius: 999px;
+}
+
+.score-bar-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--text-2);
+  min-width: 90px;
+  text-align: right;
+}
+
+/* ---------- Scenario rows ---------- */
+.scenarios {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scenario {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-2);
+  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: 84px 1fr auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.scenario.pass { border-left: 3px solid var(--accent-green); }
+.scenario.fail { border-left: 3px solid var(--accent-red); }
+
+.scenario-mark {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 5px 10px;
+  border-radius: 6px;
+  text-align: center;
+  width: 64px;
+}
+
+.scenario-mark.pass {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--accent-green);
+}
+.scenario-mark.fail {
+  background: rgba(248, 113, 113, 0.16);
+  color: var(--accent-red);
+}
+
+.scenario-body { min-width: 0; }
+
+.scenario-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-0);
+  margin-bottom: 4px;
+}
+
+.scenario-id {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 8px;
+}
+
+.scenario-evidence {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--text-1);
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.55;
+}
+
+.scenario.fail .scenario-evidence {
+  border-color: rgba(248, 113, 113, 0.25);
+  background:
+    linear-gradient(180deg, rgba(248,113,113,0.04), transparent 50%),
+    var(--bg-0);
+}
+
+.scenario-duration {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* Terminal chrome for failure tracebacks */
+.terminal {
+  margin-top: 10px;
+  background: #050608;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.terminal-chrome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
+  border-bottom: 1px solid var(--border);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: 0.08em;
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 6px;
+}
+.terminal-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--bg-2);
+}
+.terminal-dot:nth-child(1) { background: #f87171; }
+.terminal-dot:nth-child(2) { background: #fbbf24; }
+.terminal-dot:nth-child(3) { background: #34d399; }
+
+.terminal-body {
+  padding: 14px 16px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: #f87171;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  max-height: 240px;
+  overflow: auto;
+}
+
+/* ---------- Footer ---------- */
+.footer {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* Print-friendly */
+@media print {
+  body { background: white; color: black; }
+  .scenario, .criterion { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position: absolute">
+  <defs>
+    <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+  </defs>
+</svg>
+<main>
+  <section class="header">
+    <div class="header-row">
+      <div>
+        <div class="subtitle">Mentat v0.2 — state machine eval rig</div>
+        <h1 class="title">mentat-state-machine-rubric</h1>
+      </div>
+      <div class="subtitle" style="text-align: right">
+        <div>rubric v0.2.0</div>
+        <div>2026-05-10T20:49:29Z</div>
+        <div>runtime 19.3 ms</div>
+      </div>
+    </div>
+    <div class="verdict">
+      <div class="score-ring">
+        <svg viewBox="0 0 120 120">
+          <circle class="track" cx="60" cy="60" r="50" />
+          <circle class="progress" cx="60" cy="60" r="50"
+                  stroke-dasharray="314.16"
+                  stroke-dashoffset="0.00" />
+        </svg>
+        <div class="label">
+          <span class="value">1.00</span>
+          <span class="of">/ 1.00</span>
+        </div>
+      </div>
+      <div class="verdict-detail">
+        <div class="verdict-label pass">PASS</div>
+        <div class="verdict-meta">
+          aggregate threshold: 0.70
+        </div>
+        <div class="verdict-meta">
+          weighted aggregate = Σ(weight × score / 5)
+        </div>
+        <div class="verdict-meta">
+          11 scenarios across 3 criteria
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="criteria">
+    
+<div class="criterion">
+  <div class="criterion-head">
+    <div class="criterion-head-left">
+      <h3>State-Transition Correctness</h3>
+      <div class="id">state_transition_correctness</div>
+    </div>
+    <div class="criterion-grade">
+      <span class="grade-pill g-5">5 / 5</span>
+      <span class="criterion-meta">5/5 pass · weight 0.40 · contrib 0.400</span>
+    </div>
+  </div>
+  <div class="criterion-body">
+    <p class="criterion-description">Given a synthetic event sequence, does the FSA land in the expected end state and traverse the expected intermediate states? The state machine is deterministic — any deviation indicates either a transition-table regression or an event-classification bug.</p>
+    <div class="score-bar-row">
+      <div class="score-bar-track">
+        <div class="score-bar-fill" style="width: 100.0%"></div>
+      </div>
+      <div class="score-bar-label">5/5 (100%)</div>
+    </div>
+    <div class="scenarios">
+      
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Boot</div>
+    <div class="scenario-id">boot · criterion state_transition_correctness</div>
+    <div class="scenario-evidence">boot: SESSION_START kept FSA in PLANNING (1 step, 0 transitions)</div>
+  </div>
+  <div class="scenario-duration">0.3 ms</div>
+</div>
+
+
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Plan → Read → Write → Exec → Verify → Reflect</div>
+    <div class="scenario-id">write_loop · criterion state_transition_correctness</div>
+    <div class="scenario-evidence">write_loop: traversed 6 events, ended in REFLECTING (4 transitions)</div>
+  </div>
+  <div class="scenario-duration">0.1 ms</div>
+</div>
+
+
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Verify-fail retry cycle</div>
+    <div class="scenario-id">verify_loop · criterion state_transition_correctness</div>
+    <div class="scenario-evidence">verify_loop: VERIFYING-error-retry-success cycled cleanly back to REFLECTING</div>
+  </div>
+  <div class="scenario-duration">0.1 ms</div>
+</div>
+
+
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Scope-drift universal override</div>
+    <div class="scenario-id">drift_recovery · criterion state_transition_correctness</div>
+    <div class="scenario-evidence">drift_recovery: SCOPE_DRIFT_DETECTED → DRIFTING → PROMPT_SUBMIT → PLANNING held for all 6 initial states</div>
+  </div>
+  <div class="scenario-duration">0.1 ms</div>
+</div>
+
+
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Compaction handoff</div>
+    <div class="scenario-id">compact_resume · criterion state_transition_correctness</div>
+    <div class="scenario-evidence">compact_resume: PRE_COMPACT → COMPACTING → POST_COMPACT → REFLECTING held for all 7 initial states</div>
+  </div>
+  <div class="scenario-duration">0.1 ms</div>
+</div>
+
+    </div>
+  </div>
+</div>
+
+
+<div class="criterion">
+  <div class="criterion-head">
+    <div class="criterion-head-left">
+      <h3>Predictive-Routing Accuracy</h3>
+      <div class="id">predictive_routing_accuracy</div>
+    </div>
+    <div class="criterion-grade">
+      <span class="grade-pill g-5">5 / 5</span>
+      <span class="criterion-meta">3/3 pass · weight 0.30 · contrib 0.300</span>
+    </div>
+  </div>
+  <div class="criterion-body">
+    <p class="criterion-description">After warming the Q-table on a synthetic 200-event trajectory with a known reward distribution, does thompson_recommend pick the empirically-best tool for each state at greater than 70% of the variance-weighted optimum? Cold-start fallback must be graceful (None or first-visit-equivalent). Contested states (two near-equal Q-values with different visit counts) must still allocate meaningful exploration weight (&gt;= 15%) to the higher-variance arm.</p>
+    <div class="score-bar-row">
+      <div class="score-bar-track">
+        <div class="score-bar-fill" style="width: 100.0%"></div>
+      </div>
+      <div class="score-bar-label">5/5 (100%)</div>
+    </div>
+    <div class="scenarios">
+      
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Cold-start fallback</div>
+    <div class="scenario-id">cold_start · criterion predictive_routing_accuracy</div>
+    <div class="scenario-evidence">cold_start: 100 trials over empty Q-table touched 6/6 distinct arms (recommender is exploring, not collapsed). counts={&#x27;Read&#x27;: 12, &#x27;Grep&#x27;: 16, &#x27;Glob&#x27;: 17, &#x27;Edit&#x27;: 16, &#x27;Bash&#x27;: 18, &#x27;Agent&#x27;: 21}</div>
+  </div>
+  <div class="scenario-duration">5.4 ms</div>
+</div>
+
+
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Warm-table exploitation</div>
+    <div class="scenario-id">warm_table · criterion predictive_routing_accuracy</div>
+    <div class="scenario-evidence">warm_table: Read picked 97/100 (threshold &gt; 70). distribution={&#x27;Read&#x27;: 97, &#x27;Grep&#x27;: 0, &#x27;Glob&#x27;: 1, &#x27;Edit&#x27;: 0, &#x27;Bash&#x27;: 2, &#x27;Agent&#x27;: 0}</div>
+  </div>
+  <div class="scenario-duration">6.4 ms</div>
+</div>
+
+
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Contested state — exploration weight</div>
+    <div class="scenario-id">contested_state · criterion predictive_routing_accuracy</div>
+    <div class="scenario-evidence">contested_state: high-variance arm Glob picked 50/100 (threshold &gt;= 15). distribution={&#x27;Read&#x27;: 50, &#x27;Glob&#x27;: 50}</div>
+  </div>
+  <div class="scenario-duration">3.0 ms</div>
+</div>
+
+    </div>
+  </div>
+</div>
+
+
+<div class="criterion">
+  <div class="criterion-head">
+    <div class="criterion-head-left">
+      <h3>Persistence-Recovery Integrity</h3>
+      <div class="id">persistence_recovery_integrity</div>
+    </div>
+    <div class="criterion-grade">
+      <span class="grade-pill g-5">5 / 5</span>
+      <span class="criterion-meta">3/3 pass · weight 0.30 · contrib 0.300</span>
+    </div>
+  </div>
+  <div class="criterion-body">
+    <p class="criterion-description">Write FSA state and the Q-table to disk, simulate a crash, reload, and verify the recovered state is bit-identical to what was saved. Also verifies the post-compact handoff IO round-trip in isolation (file produced, parsed back to the same content).</p>
+    <div class="score-bar-row">
+      <div class="score-bar-track">
+        <div class="score-bar-fill" style="width: 100.0%"></div>
+      </div>
+      <div class="score-bar-label">5/5 (100%)</div>
+    </div>
+    <div class="scenarios">
+      
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Session JSON round-trip</div>
+    <div class="scenario-id">session_recover · criterion persistence_recovery_integrity</div>
+    <div class="scenario-evidence">session_recover: all 10 Session fields round-tripped identically through JSON</div>
+  </div>
+  <div class="scenario-duration">0.4 ms</div>
+</div>
+
+
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Q-table close/reopen</div>
+    <div class="scenario-id">q_table_resume · criterion persistence_recovery_integrity</div>
+    <div class="scenario-evidence">q_table_resume: 6 rows bit-identical across close/reopen cycle</div>
+  </div>
+  <div class="scenario-duration">3.2 ms</div>
+</div>
+
+
+<div class="scenario pass">
+  <div class="scenario-mark pass">PASS</div>
+  <div class="scenario-body">
+    <div class="scenario-name">Pre-compact handoff IO</div>
+    <div class="scenario-id">handoff_replay · criterion persistence_recovery_integrity</div>
+    <div class="scenario-evidence">handoff_replay: round-tripped 545 bytes; extracted state=VERIFYING, last_tool=pytest, chain_depth=6</div>
+  </div>
+  <div class="scenario-duration">0.2 ms</div>
+</div>
+
+    </div>
+  </div>
+</div>
+
+  </section>
+  <footer class="footer">
+    <div>Mentat eval rig — mentat-state-machine-rubric v0.2.0</div>
+    <div>generated 2026-05-10T20:49:29Z</div>
+  </footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,80 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/session_start.py",
+            "statusMessage": "mentat: session start",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/user_prompt_submit.py",
+            "statusMessage": "mentat: prompt + drift check",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/pre_tool_use.py",
+            "statusMessage": "mentat: pre tool",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/permission_request.py",
+            "statusMessage": "mentat: permission request",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/post_tool_use.py",
+            "statusMessage": "mentat: post tool + Q-update",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CODEX_PLUGIN_ROOT}/adapters/codex/hooks/stop.py",
+            "statusMessage": "mentat: stop + handoff",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
