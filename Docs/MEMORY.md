@@ -100,3 +100,9 @@
 - Active CPF/private-marketplace package is `plugins/Aeriadne/` with canonical path `/home/daeron/Repositories/Somnus-Intellligence-Stack/plugins/Aeriadne`; old names remain alias/conflict metadata only.
 - Aeriadne manifests/docs were realigned from stale `/home/daeron/Projects/Modern-ML/Plugins/Aeriadne` to the actual `Somnus-Intellligence-Stack` repo path.
 - Aeriadne validator now gates stale path markers, backup/cache churn, canonical path drift, metadata mirror drift, and reappearance of the deleted legacy archive. Final validation passed with `PYTHONDONTWRITEBYTECODE=1`.
+
+## 2026-06-06 — Documentation sweep and GitHub About alignment
+
+- Performed a comprehensive sweep of the repository's documentation. Created `desk/PLAN.md` mapping the polish plan.
+- Reconstructed `README.md` to align with the Somnus Documentation Design System v3, centering the logo, setting up badges, adding a Unicode-based Plugin Triad matrix, detailing Mentat/CTMv3/Aeriadne, and mapping out the marketplace planes.
+- Drafted operator-grade, plain-text candidate descriptions for the GitHub About tab to replace the verbose legacy text within the 350-character limit.
