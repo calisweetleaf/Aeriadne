@@ -1,0 +1,29 @@
+description = "Run the Aeriadne Marketplace Operator — package, registry, adapter, or MCP catalog work."
+
+prompt = """
+Activate the Aeriadne Marketplace Operator (MOP) skill.
+
+Input: {{args}}
+Expected format: <artifact-path-or-description> --mode <A|B|C|D|E>
+Modes: A=package-creation | B=registry | C=adapter | D=mcp-catalog | E=release-sentinel
+
+If no mode is given, classify the task from context.
+
+Load the MOP skill from:
+  skills/aeriadne-marketplace-operator/SKILL.md
+
+Hard packaging rules (always apply):
+1. Canonical source is Plugins/Aeriadne/ — generated projections never become canonical.
+2. BB7/SovereignMCP stays external — catalog as reference, never vendor code.
+3. No secrets, auth files, runtime databases, session logs, or caches in packages.
+4. Do not claim install status without running install verification.
+5. Do not mark validated without evidence from validate_package.py.
+
+Return the evidence contract:
+1. Files changed — exact paths
+2. Package state — staged / validated / installed / blocked
+3. Registry effect — what entries changed
+4. Client effect — exposure added
+5. Validation evidence — commands run and pass/fail
+6. Next gate — smallest safe next move
+"""

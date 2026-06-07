@@ -1,0 +1,45 @@
+description = "Run the full Aeriadne validation gate sequence — manifests, skill packages, constitution linter, score, static evals, secrets scan."
+
+prompt = """
+Run the Aeriadne release sentinel validation gate sequence.
+
+Working directory: {{args}}
+If no argument, use: .  (run from the Aeriadne plugin root, e.g. Plugins/Aeriadne)
+
+Run every gate in order. Every gate must PASS before reporting PROMOTION READY.
+
+Gate 1 — Root manifest parse:
+  python3 -m json.tool plugin.json > /dev/null
+
+Gate 2 — TOML parse:
+  python3 -c "import pathlib,tomllib; tomllib.loads(pathlib.Path('plugin.toml').read_text())"
+
+Gate 3 — Client manifests:
+  python3 -m json.tool .codex-plugin/plugin.json > /dev/null
+  python3 -m json.tool .claude-plugin/plugin.json > /dev/null
+
+Gate 4 — Package structure:
+  python3 scripts/validate_package.py .
+
+Gate 5 — CPF skill package:
+  python3 skills/constitutional-prompt-framework/scripts/validate_skill_package.py \
+      skills/constitutional-prompt-framework
+
+Gate 6 — Constitution linter:
+  python3 skills/constitutional-prompt-framework/scripts/constitution_linter.py \
+      skills/constitutional-prompt-framework/examples/example-agent-constitution.md
+
+Gate 7 — Score check (>= 70 required):
+  python3 skills/constitutional-prompt-framework/scripts/score_constitution.py \
+      skills/constitutional-prompt-framework/examples/example-agent-constitution.md
+
+Gate 8 — Static evals:
+  python3 skills/constitutional-prompt-framework/scripts/run_static_evals.py \
+      skills/constitutional-prompt-framework/tests/eval_cases.yaml
+
+Gate 9 — Secrets scan:
+  find . -name ".env" -o -name "*.sqlite" -o -name "oauth*" | grep -v ".git"
+  (must return empty)
+
+Return: PROMOTION READY or BLOCKED with exact failing gates and stderr.
+"""

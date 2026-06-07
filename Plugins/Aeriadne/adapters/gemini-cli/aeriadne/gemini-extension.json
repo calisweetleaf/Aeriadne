@@ -1,0 +1,11 @@
+{
+  "name": "aeriadne",
+  "version": "1.0.0",
+  "description": "Aeriadne — Constitutional Prompt Framework and private marketplace operator. Derives, audits, hardens, ports, and packages agent constitutions, system prompts, and Operator intelligence artifacts. Two primary skills: constitutional-prompt-framework and aeriadne-marketplace-operator.",
+  "contextFileName": "GEMINI.md",
+  "excludeTools": [],
+  "homepage": "file:///home/daeron/Repositories/Somnus-Intellligence-Stack/Plugins/Aeriadne",
+  "hooks": {
+    "$ref": "./hooks/hooks.json"
+  }
+}

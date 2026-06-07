@@ -1,0 +1,32 @@
+description = "Invoke the Constitutional Prompt Framework — derive, harden, audit, port, or package an agent constitution or system prompt."
+
+prompt = """
+Activate the Constitutional Prompt Framework (CPF) skill.
+
+Input: {{args}}
+
+Step 1 — Classify the task into a mode:
+  Mode A: New constitution (input is intent, notes, or mission brief)
+  Mode B: Expansion or hardening (input is thin existing prompt)
+  Mode C: Audit (input is an existing prompt to evaluate)
+  Mode D: Patch or section refactor (input is specific sections to fix)
+  Mode E: Platform portability binding (input includes target platform)
+  Mode F: Prompt-to-skill conversion
+
+Step 2 — If no input or insufficient input, begin intake protocol:
+  - Target agent name and entity type
+  - Mission and definition of success
+  - Primary deployment platform (or "platform-agnostic")
+  Then proceed to Mode A.
+
+Step 3 — Execute the appropriate mode per the CPF doctrine in GEMINI.md.
+Load reference docs from:
+  skills/constitutional-prompt-framework/references/
+
+Step 4 — Deliver the evidence contract:
+  1. Design note
+  2. Complete constitution or output
+  3. Acceptance gate (audit results, score, residual risks)
+
+Hard rule: do not hand back a decorative prompt. Every sentence constrains, routes, preserves, or improves judgment.
+"""

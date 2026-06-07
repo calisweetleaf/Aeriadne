@@ -1,0 +1,9 @@
+{
+  "hooks": [
+    {
+      "event": "AfterTool",
+      "script": "./hooks/after_tool_formatter.py",
+      "description": "Intelligent tool output formatter — compresses CTMv3 and Mentat outputs, suppresses substrate telemetry, caps memory search floods before they enter model context."
+    }
+  ]
+}

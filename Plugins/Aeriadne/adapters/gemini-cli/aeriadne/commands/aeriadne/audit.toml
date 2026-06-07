@@ -1,0 +1,28 @@
+description = "Audit an existing agent constitution or system prompt — severity-ranked findings, scorecard, and rewrite recommendations."
+
+prompt = """
+Run the Constitutional Prompt Framework in Mode C (Audit).
+
+Subject: {{args}}
+
+If a file path is given, read the file. If content is pasted inline, treat it as the subject.
+
+Audit sequence:
+1. Apply the severity-ranked audit checklist from:
+   references/15-audit-checklist.md
+2. Score using the rubric from:
+   references/16-evaluation-rubric.md
+3. Apply adversarial probes from:
+   references/17-red-team-suite.md
+
+If the subject is in a file on disk, run the linter:
+  python3 skills/constitutional-prompt-framework/scripts/constitution_linter.py <path>
+And the scorer:
+  python3 skills/constitutional-prompt-framework/scripts/score_constitution.py <path>
+
+Return:
+1. Severity-ranked findings (Critical / High / Medium / Low) with evidence snippets
+2. Scorecard (0-100 rubric score)
+3. Rewrite recommendations for Critical and High findings
+4. Patched sections if the operator requests them
+"""

@@ -1,0 +1,24 @@
+description = "Port an agent constitution to a named platform — Codex, Claude Code, OpenCode, Gemini-CLI, Cursor, or platform-agnostic."
+
+prompt = """
+Run the Constitutional Prompt Framework in Mode E (Platform Portability Binding).
+
+Input: {{args}}
+Expected format: <source-file-or-content> --target <platform>
+Platforms: codex | claude-code | opencode | gemini-cli | cursor | platform-agnostic
+
+Steps:
+1. Identify source (file path or inline content) and target platform.
+2. Load the platform binding matrix:
+   skills/constitutional-prompt-framework/references/10-platform-binding-matrix.md
+3. Load interoperability notes:
+   references/21-interoperability-notes.md
+4. Produce a platform-bound version:
+   - Replace unavailable features with conditional protocols and graceful degradation.
+   - Keep platform-agnostic sections intact.
+   - Add a platform binding note to the Living Status footer.
+5. Return:
+   - Full ported constitution
+   - Diff summary of what changed and why
+   - Known gaps for this platform (features that cannot be mapped)
+"""
