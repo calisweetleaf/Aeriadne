@@ -7,8 +7,8 @@ Control-plane layer that makes capability space explorable.
 
 import json
 import logging
-import os
 import math
+import os
 import re
 import threading
 import time
@@ -23,36 +23,38 @@ try:
         CognitiveJournalSubsystem,
         GoldenPathOracle,
         NarrativeEngine,
-        _SpectralIntentDecomposer,
-        _MCTSPlanner,
-        _ThompsonContextualBandit,
         SessionMomentum,
+        _MCTSPlanner,
+        _SpectralIntentDecomposer,
+        _ThompsonContextualBandit,
     )
+
     _LISAN_PRESCIENT_AVAILABLE = True
 except ImportError as _imp_err:
     _LISAN_PRESCIENT_AVAILABLE = False
     _SpectralIntentDecomposer = None  # type: ignore[assignment]
-    _MCTSPlanner = None               # type: ignore[assignment,misc]
+    _MCTSPlanner = None  # type: ignore[assignment,misc]
     _ThompsonContextualBandit = None  # type: ignore[assignment,misc]
-    SessionMomentum = None            # type: ignore[assignment,misc]
+    SessionMomentum = None  # type: ignore[assignment,misc]
     logging.getLogger(__name__).warning(
         "Lisan prescient subsystems not installed: %s", _imp_err
     )
 except Exception as _lisan_prescient_err:
     _LISAN_PRESCIENT_AVAILABLE = False
     _SpectralIntentDecomposer = None  # type: ignore[assignment]
-    _MCTSPlanner = None               # type: ignore[assignment,misc]
+    _MCTSPlanner = None  # type: ignore[assignment,misc]
     _ThompsonContextualBandit = None  # type: ignore[assignment,misc]
-    SessionMomentum = None            # type: ignore[assignment,misc]
+    SessionMomentum = None  # type: ignore[assignment,misc]
     logging.getLogger(__name__).error(
         "CRITICAL: Lisan prescient subsystems failed to load due to code/syntax error: %s",
         _lisan_prescient_err,
-        exc_info=True
+        exc_info=True,
     )
 
 # ── Lisan al-Gaib: Distillation (opt-in, failure is non-fatal) ───────────────
 try:
     from tools.lisan_al_gaib import DistillationSubsystem
+
     _LISAN_DISTILLATION_AVAILABLE = True
 except ImportError:
     _LISAN_DISTILLATION_AVAILABLE = False
@@ -61,12 +63,13 @@ except Exception as _exc:
     logging.getLogger(__name__).error(
         "CRITICAL: Lisan distillation failed to load due to code/syntax error: %s",
         _exc,
-        exc_info=True
+        exc_info=True,
     )
 
 # ── Muad'Dib: Neural substrate twin (opt-in, failure is non-fatal) ───────────
 try:
     from muadib.muaddib import DigitalTwinTool as _DigitalTwinTool
+
     _DIGITAL_TWIN_AVAILABLE = True
 except ImportError:
     _DIGITAL_TWIN_AVAILABLE = False
@@ -77,7 +80,7 @@ except Exception as _exc:
     logging.getLogger(__name__).error(
         "CRITICAL: DigitalTwinTool failed to load due to code/syntax error: %s",
         _exc,
-        exc_info=True
+        exc_info=True,
     )
 
 # ── Muad'Dib advanced mode gate ──────────────────────────────────────────────
@@ -386,7 +389,9 @@ class ExoskeletonTool:
             len(self.golden_paths),
             len(self._active_plans),
             ", neural_twin=active" if self._digital_twin is not None else "",
-            (", subsystems=[" + ",".join(subsystem_tags) + "]") if subsystem_tags else "",
+            (", subsystems=[" + ",".join(subsystem_tags) + "]")
+            if subsystem_tags
+            else "",
         )
 
     def _tokenize(self, text: str) -> List[str]:
@@ -699,7 +704,10 @@ class ExoskeletonTool:
 
     def _refresh_spectral_catalog(self) -> None:
         """Keep lisan's spectral decomposer aligned with the live tool catalog."""
-        if not getattr(self, "_lisan_available", _LISAN_AVAILABLE) or self._spectral_decomposer is None:
+        if (
+            not getattr(self, "_lisan_available", _LISAN_AVAILABLE)
+            or self._spectral_decomposer is None
+        ):
             return
         try:
             self._spectral_decomposer.rebuild_idf(self.tool_catalog)
@@ -723,12 +731,16 @@ class ExoskeletonTool:
                         n: info.get("category", "misc")
                         for n, info in self.tool_catalog.items()
                     }
-                    encode_result = twin.bb7_dt_encode_catalog(tool_names, tool_categories)
+                    encode_result = twin.bb7_dt_encode_catalog(
+                        tool_names, tool_categories
+                    )
                     if isinstance(encode_result, dict) and encode_result.get("ok"):
                         embeddings: Dict[str, Any] = encode_result.get("embeddings", {})
                         if embeddings:
                             # ── Consumer 1: spectral decomposer neural blend ──
-                            self._spectral_decomposer.inject_neural_embeddings(embeddings)
+                            self._spectral_decomposer.inject_neural_embeddings(
+                                embeddings
+                            )
                             self.logger.debug(
                                 "Neural embeddings injected into spectral decomposer (%d tools)",
                                 len(embeddings),
@@ -742,7 +754,9 @@ class ExoskeletonTool:
                             cat_sum: Dict[str, float] = defaultdict(float)
                             cat_cnt: Dict[str, int] = defaultdict(int)
                             for tool_name, vec in embeddings.items():
-                                cat = self.tool_catalog.get(tool_name, {}).get("category", "misc")
+                                cat = self.tool_catalog.get(tool_name, {}).get(
+                                    "category", "misc"
+                                )
                                 l1_norm = sum(abs(x) for x in vec) / max(1, len(vec))
                                 cat_sum[cat] += l1_norm
                                 cat_cnt[cat] += 1
@@ -910,7 +924,9 @@ class ExoskeletonTool:
         calls for priors to converge past Beta(1,1).
         """
         seeded = 0
-        for path_name, path_data in self._filter_golden_paths(self.golden_paths).items():
+        for path_name, path_data in self._filter_golden_paths(
+            self.golden_paths
+        ).items():
             chain = path_data.get("chain", [])
             if not chain:
                 continue
@@ -962,7 +978,7 @@ class ExoskeletonTool:
                 conn = sqlite3.connect(str(self._auto_tool.patterns_db))
                 conn.execute(
                     """
-                    INSERT OR REPLACE INTO workflow_patterns 
+                    INSERT OR REPLACE INTO workflow_patterns
                     (id, pattern_type, pattern_data, frequency, efficiency_score)
                     VALUES (?, ?, ?, ?, ?)
                 """,
@@ -1121,10 +1137,7 @@ class ExoskeletonTool:
             return None
         normalized = dict(match)
         canonical_name = str(
-            normalized.get("path_name")
-            or normalized.get("name")
-            or fallback_name
-            or ""
+            normalized.get("path_name") or normalized.get("name") or fallback_name or ""
         ).strip()
         if canonical_name:
             normalized["path_name"] = canonical_name
@@ -1170,13 +1183,19 @@ class ExoskeletonTool:
             tag_hits = 0
             for tag in path_data.get("tags", []):
                 tag_lower = str(tag).lower()
-                if tag_lower and (tag_lower in intent_lower or intent_lower in tag_lower):
+                if tag_lower and (
+                    tag_lower in intent_lower or intent_lower in tag_lower
+                ):
                     tag_hits += 1
             score = use_case_hits * 2.0 + tag_hits * 1.0
             if score > best_score:
                 best_score = score
-                fallback_name = str(path_data.get("name") or key.replace("auto:", "")).strip()
-                best_match = self._normalize_golden_match(path_data, fallback_name=fallback_name)
+                fallback_name = str(
+                    path_data.get("name") or key.replace("auto:", "")
+                ).strip()
+                best_match = self._normalize_golden_match(
+                    path_data, fallback_name=fallback_name
+                )
 
         return best_match if best_score >= 1.0 else None
 
@@ -1279,7 +1298,9 @@ class ExoskeletonTool:
                     tool_name, category, intent, self.golden_paths
                 )
             except Exception as _sm_err:
-                self.logger.debug("SessionMomentum.update failed (non-fatal): %s", _sm_err)
+                self.logger.debug(
+                    "SessionMomentum.update failed (non-fatal): %s", _sm_err
+                )
 
     def _detect_active_workflow(self) -> None:
         """Check if the current tool sequence matches a golden path prefix.
@@ -1292,7 +1313,9 @@ class ExoskeletonTool:
             self.session_state["active_workflow"] = None
             return
         recent = [t["tool"] for t in seq[-4:]]
-        for path_name, path_data in self._filter_golden_paths(self.golden_paths).items():
+        for path_name, path_data in self._filter_golden_paths(
+            self.golden_paths
+        ).items():
             golden = path_data.get("chain", [])
             for offset in range(len(golden) - len(recent) + 1):
                 if golden[offset : offset + len(recent)] == recent:
@@ -1518,7 +1541,9 @@ class ExoskeletonTool:
         updated = 0
         removed = 0
         live_names = set(live_tools.keys())
-        stale_names = [name for name in self.tool_catalog.keys() if name not in live_names]
+        stale_names = [
+            name for name in self.tool_catalog.keys() if name not in live_names
+        ]
         for stale_name in stale_names:
             del self.tool_catalog[stale_name]
             removed += 1
@@ -1622,7 +1647,9 @@ class ExoskeletonTool:
                         chain_length=len(tools),
                     )
                 except Exception as e:
-                    self.logger.warning("DigitalTwinTool observe failed (non-fatal): %s", e)
+                    self.logger.warning(
+                        "DigitalTwinTool observe failed (non-fatal): %s", e
+                    )
 
         with self._state_lock:
             for tool_name in tools:
@@ -1777,13 +1804,13 @@ class ExoskeletonTool:
                 q_result = self._digital_twin.bb7_dt_q_scores(
                     [tool_name], context_category
                 )
-                neural_q_bonus = float(
-                    q_result.get("bonuses", {}).get(tool_name, 0.0)
-                )
+                neural_q_bonus = float(q_result.get("bonuses", {}).get(tool_name, 0.0))
             except Exception as e:
                 self.logger.debug("Failed to fetch neural Q-bonus (non-fatal): %s", e)
 
-        return self._thompson_bandit.draw(prior, context_category, neural_q_bonus=neural_q_bonus)
+        return self._thompson_bandit.draw(
+            prior, context_category, neural_q_bonus=neural_q_bonus
+        )
 
     def _semantic(self, query_tokens: List[str], tool_counts: Counter) -> float:
         if not query_tokens:
@@ -1844,7 +1871,6 @@ class ExoskeletonTool:
                 "memory_interconnect",
                 "session_manager_tool",
                 "project_context_tool",
-                "web_tool",
                 "enhanced_web_tool",
                 "visual_tool",
             )
@@ -1916,10 +1942,12 @@ class ExoskeletonTool:
             baseline[name] = self._semantic(query_tokens, info["token_counts"])
             if self._lisan_available and self._spectral_decomposer is not None:
                 try:
-                    spectral_scores[name] = self._spectral_decomposer.spectral_similarity(
-                        query,
-                        f"{info.get('name', name)} {info.get('description', '')}",
-                        tool_name=name,
+                    spectral_scores[name] = (
+                        self._spectral_decomposer.spectral_similarity(
+                            query,
+                            f"{info.get('name', name)} {info.get('description', '')}",
+                            tool_name=name,
+                        )
                     )
                 except Exception:
                     spectral_scores[name] = 0.0
@@ -1993,7 +2021,9 @@ class ExoskeletonTool:
                 if isinstance(_adv_result, dict) and _adv_result.get("ok"):
                     _advanced_features_batch = _adv_result.get("features", {})
             except Exception as e:
-                self.logger.debug("Failed to fetch advanced features batch (non-fatal): %s", e)
+                self.logger.debug(
+                    "Failed to fetch advanced features batch (non-fatal): %s", e
+                )
 
         ranked = []
         for name in pool:
@@ -2027,9 +2057,9 @@ class ExoskeletonTool:
             if self._digital_twin is not None:
                 try:
                     q_result = self._digital_twin.bb7_dt_q_scores([name], category)
-                    neural_q = max(0.0, min(1.0, float(
-                        q_result.get("bonuses", {}).get(name, 0.0)
-                    )))
+                    neural_q = max(
+                        0.0, min(1.0, float(q_result.get("bonuses", {}).get(name, 0.0)))
+                    )
                 except Exception:
                     neural_q = 0.0
 
@@ -2041,7 +2071,9 @@ class ExoskeletonTool:
             if _advanced_features_batch:
                 _feat = _advanced_features_batch.get(name)
                 if _feat and isinstance(_feat, dict):
-                    advanced_bonus = _ADV_ALPHA * float(_feat.get("effective_score", 0.0))
+                    advanced_bonus = _ADV_ALPHA * float(
+                        _feat.get("effective_score", 0.0)
+                    )
 
             score = (
                 (0.35 * semantic)
@@ -2068,9 +2100,19 @@ class ExoskeletonTool:
                     "reliability": round(reliability, 4),
                     "required_params": info.get("required_params", []),
                     "description": info.get("description", ""),
-                    **({"neural_q_bonus": round(neural_q, 4)} if neural_q > 0.0 else {}),
-                    **({"advanced_bonus": round(advanced_bonus, 4)} if advanced_bonus > 0.0 else {}),
-                    **({"golden_path_bonus": round(golden_bonus, 4)} if golden_bonus else {}),
+                    **(
+                        {"neural_q_bonus": round(neural_q, 4)} if neural_q > 0.0 else {}
+                    ),
+                    **(
+                        {"advanced_bonus": round(advanced_bonus, 4)}
+                        if advanced_bonus > 0.0
+                        else {}
+                    ),
+                    **(
+                        {"golden_path_bonus": round(golden_bonus, 4)}
+                        if golden_bonus
+                        else {}
+                    ),
                 }
             )
         # ── Momentum Integration ──────────────────────────────────────────
@@ -2384,6 +2426,7 @@ class ExoskeletonTool:
         neural_value_fn: Optional[Callable[[List[str]], float]] = None
         twin = getattr(self, "_digital_twin", None)
         if twin is not None and hasattr(twin, "bb7_dt_encode_catalog"):
+
             def _value_fn(chain: List[str]) -> float:
                 try:
                     encode_res = twin.bb7_dt_encode_catalog(chain)
@@ -2394,13 +2437,13 @@ class ExoskeletonTool:
                             # "how activated is the neural substrate on this chain"
                             vecs = list(embeddings.values())
                             mean_norm = sum(
-                                sum(abs(x) for x in v) / max(1, len(v))
-                                for v in vecs
+                                sum(abs(x) for x in v) / max(1, len(v)) for v in vecs
                             ) / len(vecs)
                             return max(0.0, min(1.0, mean_norm))
                 except Exception as _val_err:
                     self.logger.debug("Neural value eval failed: %s", _val_err)
                 return 0.5  # Neutral fallback — MCTS uses UCB1 to compensate
+
             neural_value_fn = _value_fn
 
         # ── MCTS vs Static Routing ───────────────────────────────────────
@@ -2427,9 +2470,7 @@ class ExoskeletonTool:
             plans = []
             for raw in raw_plans:
                 chain = raw.get("chain", [])
-                fallback = [
-                    t for t in chain if self._reliability(t) >= 0.45
-                ]
+                fallback = [t for t in chain if self._reliability(t) >= 0.45]
                 if (
                     "bb7_memory_store" in self.tool_catalog
                     and "bb7_memory_store" not in fallback
@@ -2505,7 +2546,9 @@ class ExoskeletonTool:
             "best_plan_id": best_plan_id,
             "candidate_plans": plans,
             "golden_path_match": (
-                plan_golden_match.get("name") if isinstance(plan_golden_match, dict) else None
+                plan_golden_match.get("name")
+                if isinstance(plan_golden_match, dict)
+                else None
             ),
         }
         return payload
@@ -2565,13 +2608,13 @@ class ExoskeletonTool:
             try:
                 # Build attention weights from Q-table: one score per category
                 categories = set(
-                    info.get("category", "misc")
-                    for info in self.tool_catalog.values()
+                    info.get("category", "misc") for info in self.tool_catalog.values()
                 )
                 attn_weights: Dict[str, float] = {}
                 for cat in categories:
                     cat_tools = [
-                        name for name, info in self.tool_catalog.items()
+                        name
+                        for name, info in self.tool_catalog.items()
                         if info.get("category", "misc") == cat
                     ]
                     if cat_tools:
@@ -2586,11 +2629,14 @@ class ExoskeletonTool:
                 if attn_weights and self._lisan_available:
                     try:
                         from tools.lisan_al_gaib import _TopologicalMomentumManifold
+
                         # Find the manifold via the spectral decomposer's parent scope
                         # — it's used in _compute_momentum_bonus indirectly
                         self._cached_neural_attention = attn_weights
                     except Exception as e:
-                        self.logger.debug("Failed to set _cached_neural_attention: %s", e)
+                        self.logger.debug(
+                            "Failed to set _cached_neural_attention: %s", e
+                        )
             except Exception as _attn_err:
                 self.logger.error(
                     "LOUD FAIL: Neural attention injection into momentum failed: %s",
@@ -2831,7 +2877,7 @@ class ExoskeletonTool:
         try:
             res = self.bb7_exo_briefing(
                 intent="autonomous session boot: load priors and state",
-                max_recommendations=5
+                max_recommendations=5,
             )
             narrative = res.get("narrative", "")
             if not narrative:
@@ -3713,7 +3759,9 @@ class ExoskeletonTool:
             self.logger.error("bb7_lisan_recall %s", failure)
 
         if recall_failures:
-            sections.append("### Recall Failures\n" + "\n".join(f"- {f}" for f in recall_failures))
+            sections.append(
+                "### Recall Failures\n" + "\n".join(f"- {f}" for f in recall_failures)
+            )
 
         context_blob = "\n\n".join(sections)
 
@@ -3801,7 +3849,11 @@ class ExoskeletonTool:
         routing_mode = "keyword_fallback"
         sorted_intents: List[Tuple[str, float]] = []
 
-        if self._lisan_available and self._spectral_decomposer is not None and self.tool_catalog:
+        if (
+            self._lisan_available
+            and self._spectral_decomposer is not None
+            and self.tool_catalog
+        ):
             routing_mode = "spectral"
             for tool_name, info in self.tool_catalog.items():
                 category = info.get("category", "misc")
@@ -3820,7 +3872,9 @@ class ExoskeletonTool:
         if not sorted_intents:
             query_tokens = self._tokenize(query)
             intent_scores = self._intent_weights(query_tokens, raw_query=query)
-            sorted_intents = sorted(intent_scores.items(), key=lambda x: x[1], reverse=True)
+            sorted_intents = sorted(
+                intent_scores.items(), key=lambda x: x[1], reverse=True
+            )
 
         if not sorted_intents:
             sorted_intents = [("misc", 1.0)]
@@ -3844,7 +3898,9 @@ class ExoskeletonTool:
                     or match.get("description", "")[:80]
                 )
         except Exception as e:
-            self.logger.warning("Failed to match golden path in routing (non-fatal): %s", e)
+            self.logger.warning(
+                "Failed to match golden path in routing (non-fatal): %s", e
+            )
 
         result: Dict[str, Any] = {
             "decomposed_intents": decomposed,
@@ -3899,7 +3955,9 @@ class ExoskeletonTool:
         """
         if self._digital_twin is None:
             return {"ok": False, "reason": "neural_twin_unavailable", "features": {}}
-        effective_session = session_id or self.session_state.get("session_id", "default")
+        effective_session = session_id or self.session_state.get(
+            "session_id", "default"
+        )
         effective_recent = recent_tools or [
             t.get("tool", "") for t in self.session_state.get("recent_tools", [])
         ]

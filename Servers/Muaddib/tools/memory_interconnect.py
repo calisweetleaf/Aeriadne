@@ -366,6 +366,9 @@ class MemoryInterconnectionEngine:
 
     BM25_K1 = 1.5
     BM25_B = 0.75
+    CONSOLIDATION_POLICY_VERSION = "memory_unified_archive_v1"
+    ARCHIVE_IMPORTANCE_THRESHOLD = 0.7
+    ARCHIVE_ACCESS_COUNT_THRESHOLD = 5
 
     def __init__(self, data_dir: Optional[str] = None):
         if data_dir is None:
@@ -427,9 +430,13 @@ class MemoryInterconnectionEngine:
             else:
                 self.importance_scores = {}
 
-        except Exception as e:
-            self.logger.error(f"Error loading memory indices: {e}. Resetting.")
-            self._initialize_empty_indices()
+        except (OSError, json.JSONDecodeError, TypeError) as e:
+            self.logger.error(
+                "Error loading memory indices from %s: %s", self.data_dir, e
+            )
+            raise RuntimeError(
+                f"Memory interconnect index load failed for {self.data_dir}: {e}"
+            ) from e
 
     @staticmethod
     def _empty_concept_index() -> Dict[str, Any]:
@@ -494,8 +501,13 @@ class MemoryInterconnectionEngine:
             self._atomic_write(self.relationships_file, self.relationships)
             self._atomic_write(self.concept_index_file, self.concept_index)
             self._atomic_write(self.importance_scores_file, self.importance_scores)
-        except Exception as e:
-            self.logger.error(f"Error saving memory indices: {e}")
+        except OSError as e:
+            self.logger.error(
+                "Error saving memory indices under %s: %s", self.data_dir, e
+            )
+            raise RuntimeError(
+                f"Memory interconnect index save failed for {self.data_dir}: {e}"
+            ) from e
 
     # ------------------------------------------------------------------
     # BM25 core machinery
@@ -712,6 +724,8 @@ class MemoryInterconnectionEngine:
                 "concepts": concepts,
                 "related": related,
                 "importance": importance,
+                "access_count": 0,
+                "policy_version": self.CONSOLIDATION_POLICY_VERSION,
                 "last_updated": time.time(),
             }
 
@@ -851,23 +865,58 @@ class MemoryInterconnectionEngine:
         """
         with self._lock:
             ci = self.concept_index
-            indexed_docs = len(ci.get("doc_term_freq", {}))
-            link_docs = len(self.relationships.get("memory_links", {}))
+            memory_links = set(self.relationships.get("memory_links", {}).keys())
+            doc_term_ids = set(ci.get("doc_term_freq", {}).keys())
+            doc_length_ids = set(ci.get("doc_lengths", {}).keys())
+            importance_ids = set(self.importance_scores.keys())
+            concept_ref_ids: Set[str] = set()
+            for refs in ci.get("concepts", {}).values():
+                concept_ref_ids.update(str(ref) for ref in refs)
+            indexed_docs = len(doc_term_ids)
+            link_docs = len(memory_links)
             is_dirty = ci.get("idf_dirty", True)
             total_docs = ci.get("total_docs", 0)
             avg_dl = ci.get("avg_doc_length", 0.0)
             vocab_size = len(ci.get("doc_frequency", {}))
             last_rebuild = getattr(self, "_last_rebuild_ts", 0.0)
+            orphan_doc_terms = sorted(doc_term_ids - memory_links)
+            missing_doc_terms = sorted(memory_links - doc_term_ids)
+            orphan_doc_lengths = sorted(doc_length_ids - memory_links)
+            orphan_importance = sorted(importance_ids - memory_links)
+            orphan_concept_refs = sorted(concept_ref_ids - memory_links)
+            is_stale = bool(
+                is_dirty
+                or indexed_docs != link_docs
+                or total_docs != indexed_docs
+                or orphan_doc_terms
+                or missing_doc_terms
+                or orphan_doc_lengths
+                or orphan_importance
+                or orphan_concept_refs
+            )
 
         return {
             "indexed_docs": indexed_docs,
             "relationship_docs": link_docs,
             "total_docs_counter": total_docs,
-            "is_stale": is_dirty or (indexed_docs != link_docs),
+            "is_stale": is_stale,
             "idf_dirty": is_dirty,
             "avg_doc_length": round(avg_dl, 2),
             "vocab_size": vocab_size,
             "last_rebuild_ts": last_rebuild,
+            "policy_version": self.CONSOLIDATION_POLICY_VERSION,
+            "orphan_doc_terms": orphan_doc_terms[:20],
+            "missing_doc_terms": missing_doc_terms[:20],
+            "orphan_doc_lengths": orphan_doc_lengths[:20],
+            "orphan_importance_scores": orphan_importance[:20],
+            "orphan_concept_refs": orphan_concept_refs[:20],
+            "orphan_counts": {
+                "doc_terms": len(orphan_doc_terms),
+                "missing_doc_terms": len(missing_doc_terms),
+                "doc_lengths": len(orphan_doc_lengths),
+                "importance_scores": len(orphan_importance),
+                "concept_refs": len(orphan_concept_refs),
+            },
         }
 
     def force_rebuild(self) -> Dict[str, Any]:
@@ -1260,110 +1309,137 @@ class MemoryInterconnectionEngine:
         self, age_threshold_days: int = 30, explicit_ids: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Archive low-importance, old memories and clean all indices.
-        Fixes original bug where concept_index was not pruned on archive.
+        Archive eligible interconnect entries and prune every active index.
 
-        If explicit_ids is provided, those specific IDs are archived regardless of age/importance.
+        Store-level consolidation passes explicit memory IDs so the primary store
+        and BM25 graph remain policy-identical. Direct interconnect calls use the
+        same thresholds with access_count defaulting to zero for legacy links.
         """
+        try:
+            age_threshold_days = max(1, int(age_threshold_days))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"age_threshold_days must be an integer >= 1: {exc}"
+            ) from exc
+
         current_time = time.time()
         threshold_time = current_time - (age_threshold_days * 86400)
 
         with self._lock:
+            memory_links = self.relationships.get("memory_links", {})
             to_archive_set: Set[str] = set()
+            archive_reasons: Dict[str, str] = {}
             if explicit_ids:
-                # Only archive IDs that actually exist in our index
                 for eid in explicit_ids:
-                    if eid in self.relationships["memory_links"]:
+                    if not isinstance(eid, str):
+                        raise TypeError(
+                            f"explicit_ids must contain strings, got {type(eid).__name__}"
+                        )
+                    if eid in memory_links:
                         to_archive_set.add(eid)
+                        archive_reasons[eid] = "explicit_id"
             else:
-                for memory_id, data in self.relationships["memory_links"].items():
-                    if (
-                        data.get("last_updated", current_time) < threshold_time
-                        and data.get("importance", 0.0) < 0.3
-                    ):
-                        to_archive_set.add(memory_id)
+                for memory_id, link_data in memory_links.items():
+                    last_updated = float(
+                        link_data.get("last_updated", current_time) or current_time
+                    )
+                    importance = float(link_data.get("importance", 0.0) or 0.0)
+                    access_count = int(link_data.get("access_count", 0) or 0)
+                    if last_updated > threshold_time:
+                        continue
+                    if importance >= self.ARCHIVE_IMPORTANCE_THRESHOLD:
+                        continue
+                    if access_count >= self.ARCHIVE_ACCESS_COUNT_THRESHOLD:
+                        continue
+                    to_archive_set.add(memory_id)
+                    archive_reasons[memory_id] = (
+                        f"older_than_cutoff_and_importance<{self.ARCHIVE_IMPORTANCE_THRESHOLD}"
+                        f"_and_access_count<{self.ARCHIVE_ACCESS_COUNT_THRESHOLD}"
+                    )
 
             if not to_archive_set:
                 return {
                     "consolidated": 0,
                     "archived": 0,
                     "archive_file": None,
-                    "message": f"No memories older than {age_threshold_days} days with importance < 0.3",
+                    "policy_version": self.CONSOLIDATION_POLICY_VERSION,
+                    "message": (
+                        f"No interconnect memories eligible at {age_threshold_days} days "
+                        f"with policy {self.CONSOLIDATION_POLICY_VERSION}"
+                    ),
                 }
 
-            # Write archive atomically so it is never left half-written
-            archive_file = self.data_dir / f"memory_archive_{int(current_time)}.json"
+            archive_file = (
+                self.data_dir / f"memory_index_archive_{int(current_time)}.json"
+            )
             archive_data = {
+                "schema_version": 2,
                 "archived_at": current_time,
                 "age_threshold_days": age_threshold_days,
-                "memories": {
-                    mid: self.relationships["memory_links"][mid] for mid in to_archive_set
-                },
+                "policy_version": self.CONSOLIDATION_POLICY_VERSION,
+                "archive_importance_threshold": self.ARCHIVE_IMPORTANCE_THRESHOLD,
+                "archive_access_count_threshold": self.ARCHIVE_ACCESS_COUNT_THRESHOLD,
+                "archive_reasons": archive_reasons,
+                "memories": {mid: memory_links[mid] for mid in sorted(to_archive_set)},
             }
             self._atomic_write(archive_file, archive_data)
 
-            to_archive_set = set(to_archive)
-
-            # Remove from relationship graph
             for mid in to_archive_set:
-                del self.relationships["memory_links"][mid]
+                memory_links.pop(mid, None)
 
-            # Prune cross-references in remaining memories
-            for data in self.relationships["memory_links"].values():
-                if "related" in data:
-                    data["related"] = [r for r in data["related"] if r.get("memory_id") not in to_archive_set]
-
-            # Prune concept_index["concepts"]
-            # --- FIX: prune cross-references in remaining memory_links ---
-            for mid, link_info in self.relationships["memory_links"].items():
-                if "related" in link_info:
+            for link_info in memory_links.values():
+                related = link_info.get("related")
+                if isinstance(related, list):
                     link_info["related"] = [
-                        r for r in link_info["related"]
-                        if r.get("memory_id") not in to_archive_set
+                        r
+                        for r in related
+                        if isinstance(r, dict)
+                        and r.get("memory_id") not in to_archive_set
                     ]
 
-            # --- FIX: prune concept_index["concepts"] ---
-            for concept, refs in list(self.concept_index["concepts"].items()):
+            ci = self.concept_index
+            for concept, refs in list(ci.get("concepts", {}).items()):
                 cleaned = [r for r in refs if r not in to_archive_set]
                 if cleaned:
-                    self.concept_index["concepts"][concept] = cleaned
+                    ci["concepts"][concept] = cleaned
                 else:
-                    del self.concept_index["concepts"][concept]
+                    del ci["concepts"][concept]
 
-            # Prune BM25 doc stats
-            ci = self.concept_index
             for mid in to_archive_set:
-                old_tf = ci["doc_term_freq"].pop(mid, {})
-                ci["doc_lengths"].pop(mid, None)
-                ci["total_docs"] = max(ci.get("total_docs", 0) - 1, 0)
+                old_tf = ci.get("doc_term_freq", {}).pop(mid, {})
+                ci.get("doc_lengths", {}).pop(mid, None)
                 for term in old_tf:
-                    ci["doc_frequency"][term] = max(
-                        ci["doc_frequency"].get(term, 1) - 1, 0
-                    )
-                    if ci["doc_frequency"][term] == 0:
-                        del ci["doc_frequency"][term]
-
+                    current_df = ci.get("doc_frequency", {}).get(term, 0)
+                    if current_df <= 1:
+                        ci.get("doc_frequency", {}).pop(term, None)
+                    else:
+                        ci["doc_frequency"][term] = current_df - 1
                 self.importance_scores.pop(mid, None)
 
-            # Recompute avg_doc_length
-            if ci["doc_lengths"]:
+            ci["total_docs"] = len(ci.get("doc_term_freq", {}))
+            if ci.get("doc_lengths"):
                 ci["avg_doc_length"] = sum(ci["doc_lengths"].values()) / len(
                     ci["doc_lengths"]
                 )
             else:
                 ci["avg_doc_length"] = 0.0
-            ci["idf_dirty"] = True
+            self._idf_cache = self._compute_idf()
+            ci["idf_dirty"] = False
+            self._last_rebuild_ts = time.time()
 
+            archived_count = len(to_archive_set)
             self._save_indices()
 
+        stats = self.index_stats()
         return {
-            "consolidated": len(to_archive_set),
-            "archived": len(to_archive_set),
+            "consolidated": archived_count,
+            "archived": archived_count,
             "archive_file": str(archive_file),
+            "policy_version": self.CONSOLIDATION_POLICY_VERSION,
             "pruned_concept_refs": True,
             "pruned_related_links": True,
+            "stats": stats,
         }
-
 
     @staticmethod
     def _merge_tool_arguments(
@@ -1382,10 +1458,14 @@ class MemoryInterconnectionEngine:
         merged.update(kwargs)
         return merged
 
-    def _normalize_tool_registry(self, tools: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    def _normalize_tool_registry(
+        self, tools: Dict[str, Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
         """Wrap tools so they tolerate kwargs, dict-style, and positional calls."""
 
-        def _wrap(tool_fn: Callable[..., Any], param_names: List[str]) -> Callable[..., Any]:
+        def _wrap(
+            tool_fn: Callable[..., Any], param_names: List[str]
+        ) -> Callable[..., Any]:
             def _wrapped(*args: Any, **kwargs: Any) -> Any:
                 merged = self._merge_tool_arguments(args, kwargs, param_names)
 

@@ -1535,7 +1535,8 @@ class CodeAnalysisTool:
                     return f"❌ Error reading file: {str(e)}"
 
             # Hard size gate — AST analysis requires full source in memory.
-            # Large files will OOM or stall. Deflect to shell_tool.
+            # Large files will OOM or stall. Deflect to BB7 sparse file and
+            # structural surfaces; shell is validation-only, not file ingestion.
             MAX_LINES_FULL = 800
             MAX_BYTES_FULL = 60_000
             try:
@@ -1547,11 +1548,12 @@ class CodeAnalysisTool:
                         f"⚠️  File too large for in-process AST analysis: {file_path}\n"
                         f"  • Size: {fstat.st_size:,} bytes ({line_count:,} lines)\n"
                         f"  • Limit: {MAX_BYTES_FULL:,} bytes / {MAX_LINES_FULL} lines\n\n"
-                        f"Use bb7_shell_execute with targeted queries instead:\n"
-                        f"  grep -n 'def \\|class ' {file_path}        # structure\n"
-                        f"  grep -n 'TODO\\|FIXME\\|HACK\\|BUG' {file_path} # issues\n"
-                        f"  wc -l {file_path}                           # line count\n"
-                        f"  python3 -m py_compile {file_path} && echo OK # syntax check"
+                        f"Use BB7 sparse file / structure surfaces instead:\n"
+                        f"  bb7_read_file(start_line=..., end_line=...)      # bounded windows\n"
+                        f"  bb7_read_file(semantic_target='symbol_or_marker') # focused target\n"
+                        f"  bb7_search_files(content_pattern='...')          # bounded literal search\n"
+                        f"  CodeGraph structural tools when available         # symbol/call topology\n"
+                        f"Use native validation only for runtime checks such as py_compile."
                     )
             except OSError:
                 pass
@@ -1625,9 +1627,11 @@ class CodeAnalysisTool:
                 if os.stat(file_path).st_size > MAX_BYTES_AUDIT:
                     return (
                         f"⚠️  File too large for in-process security audit: {file_path}\n"
-                        f"Use bb7_shell_execute instead:\n"
-                        f"  grep -n 'eval\\|exec\\|__import__\\|subprocess\\|os\\.system' {file_path}\n"
-                        f"  grep -n 'pickle\\|yaml\\.load\\|input(' {file_path}"
+                        f"Use BB7 sparse file / structure surfaces instead:\n"
+                        f"  bb7_search_files(content_pattern='eval')\n"
+                        f"  bb7_search_files(content_pattern='subprocess')\n"
+                        f"  bb7_read_file(semantic_target='suspect_symbol')\n"
+                        f"Use native validation only for runtime checks, not file ingestion."
                     )
             except OSError:
                 pass

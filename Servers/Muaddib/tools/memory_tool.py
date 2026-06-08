@@ -19,6 +19,7 @@ Critical fixes:
   - Working memory LRU buffer prevents redundant disk reads
 """
 
+import hashlib
 import json
 import logging
 import math
@@ -58,22 +59,39 @@ except ImportError as exc:
     INTERCONNECT_IMPORT_ERROR = exc
 
     class _Engine:  # type: ignore
-        """Stub fallback used only to surface hard failures when interconnect is absent."""
+        """Explicit degraded interconnect used when the BM25 layer cannot import."""
+
+        degraded = True
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            raise RuntimeError(
-                "tools.memory_interconnect failed to import"
-                + (
-                    f": {INTERCONNECT_IMPORT_ERROR}"
-                    if INTERCONNECT_IMPORT_ERROR is not None
-                    else ""
-                )
+            self.import_error = INTERCONNECT_IMPORT_ERROR
+            self.logger = logging.getLogger(__name__)
+            self.logger.warning(
+                "Memory interconnect unavailable; EnhancedMemoryTool is running in degraded lexical mode: %s",
+                self.import_error,
             )
+
+        def health(self) -> Dict[str, Any]:
+            return {
+                "status": "degraded",
+                "reason": "tools.memory_interconnect failed to import",
+                "error": str(self.import_error)
+                if self.import_error is not None
+                else None,
+            }
 
         def analyze_memory_entry(
             self, key: str, value: str, source: str = "memory"
         ) -> Dict[str, Any]:
-            return {"concepts": [], "importance": 0.5, "related_memories": []}
+            return {
+                "concepts": [],
+                "importance": 0.5,
+                "related_memories": [],
+                "degraded": True,
+                "error": str(self.import_error)
+                if self.import_error is not None
+                else None,
+            }
 
         def intelligent_search(
             self, query: str, max_results: int = 10
@@ -81,10 +99,36 @@ except ImportError as exc:
             return []
 
         def get_memory_insights(self) -> str:
-            return ""
+            return (
+                "BM25 interconnect unavailable — core memory is running in degraded lexical mode. "
+                f"Import error: {self.import_error}"
+            )
 
-        def consolidate_memories(self, age_threshold_days: int = 30) -> Dict[str, Any]:
-            return {"consolidated": 0, "archived": 0}
+        def index_stats(self) -> Dict[str, Any]:
+            return {
+                "status": "degraded",
+                "is_stale": True,
+                "indexed_docs": 0,
+                "relationship_docs": 0,
+                "error": str(self.import_error)
+                if self.import_error is not None
+                else None,
+            }
+
+        def consolidate_memories(
+            self,
+            age_threshold_days: int = 30,
+            explicit_ids: Optional[List[str]] = None,
+        ) -> Dict[str, Any]:
+            return {
+                "status": "degraded",
+                "consolidated": 0,
+                "archived": 0,
+                "explicit_ids_requested": len(explicit_ids or []),
+                "error": str(self.import_error)
+                if self.import_error is not None
+                else None,
+            }
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +189,10 @@ class WorkingMemoryBuffer:
 
 _EBBINGHAUS_MIN_STABILITY = 0.1
 _EBBINGHAUS_MAX_STABILITY = 60.0  # ~2 months at max
+_MEMORY_SCHEMA_VERSION = 2
+_MEMORY_CONSOLIDATION_POLICY_VERSION = "memory_unified_archive_v1"
+_ARCHIVE_IMPORTANCE_THRESHOLD = 0.7
+_ARCHIVE_ACCESS_COUNT_THRESHOLD = 5
 
 
 def _decay_score(entry: Dict[str, Any]) -> float:
@@ -171,6 +219,34 @@ def _reinforce_stability(entry: Dict[str, Any]) -> float:
     # Each access multiplies stability by 1.3 and adds 0.5 (logarithmic growth)
     new_stability = min(current * 1.3 + 0.5, _EBBINGHAUS_MAX_STABILITY)
     return round(new_stability, 4)
+
+
+def _content_hash(value: Any) -> str:
+    """Return a stable SHA-256 hash for memory payload provenance."""
+    return hashlib.sha256(str(value).encode("utf-8", errors="replace")).hexdigest()
+
+
+def _memory_id_for_key(key: str) -> str:
+    return f"memory:{key}"
+
+
+def _archive_decision(entry: Dict[str, Any], cutoff: float) -> Tuple[bool, str]:
+    """Shared production retention policy for store and interconnect consolidation."""
+    last_accessed = float(
+        entry.get("last_accessed", entry.get("timestamp", time.time())) or time.time()
+    )
+    importance = float(entry.get("importance", 0.5) or 0.5)
+    access_count = int(entry.get("access_count", 0) or 0)
+    if last_accessed > cutoff:
+        return False, "recent_access"
+    if importance >= _ARCHIVE_IMPORTANCE_THRESHOLD:
+        return False, "importance_protected"
+    if access_count >= _ARCHIVE_ACCESS_COUNT_THRESHOLD:
+        return False, "access_protected"
+    return True, (
+        f"older_than_cutoff_and_importance<{_ARCHIVE_IMPORTANCE_THRESHOLD}"
+        f"_and_access_count<{_ARCHIVE_ACCESS_COUNT_THRESHOLD}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -210,18 +286,11 @@ class EnhancedMemoryTool:
         self.logger = logging.getLogger(__name__)
         self.working_memory = WorkingMemoryBuffer(capacity=50)
 
-        # Intelligence engine
-        if INTERCONNECT_AVAILABLE:
-            self.intelligence = _Engine(str(self.storage_file.parent))
-        else:
-            raise RuntimeError(
-                "Memory interconnection engine is required for EnhancedMemoryTool"
-                + (
-                    f": {INTERCONNECT_IMPORT_ERROR}"
-                    if INTERCONNECT_IMPORT_ERROR is not None
-                    else ""
-                )
-            )
+        # Intelligence engine. Core memory must stay available even when the
+        # interconnect layer is degraded; interconnect-specific features report
+        # their degraded status through health/stats and search fallback paths.
+        self.intelligence = _Engine(str(self.storage_file.parent))
+        self.interconnect_degraded = bool(getattr(self.intelligence, "degraded", False))
 
         # Initialise empty store if new
         if not self.storage_file.exists():
@@ -257,10 +326,15 @@ class EnhancedMemoryTool:
         for key, entry in data.items():
             if not isinstance(entry, dict):
                 # Migrate legacy plain-string format
+                value = str(entry)
                 data[key] = {
-                    "value": str(entry),
+                    "schema_version": _MEMORY_SCHEMA_VERSION,
+                    "memory_id": _memory_id_for_key(key),
+                    "value": value,
+                    "content_hash": _content_hash(value),
                     "timestamp": now,
                     "created": now,
+                    "updated": now,
                     "category": "uncategorized",
                     "importance": 0.5,
                     "tags": [],
@@ -268,15 +342,40 @@ class EnhancedMemoryTool:
                     "last_accessed": now,
                     "stability": 1.0,
                     "version": 1,
+                    "lifecycle_state": "active",
+                    "provenance": {
+                        "source": "legacy_plain_string_migration",
+                        "source_tool": "memory_tool",
+                        "raw_payload_hash": _content_hash(value),
+                        "ingested_at": now,
+                    },
                 }
             else:
+                value = entry.get("value", "")
+                entry.setdefault("schema_version", _MEMORY_SCHEMA_VERSION)
+                entry.setdefault("memory_id", _memory_id_for_key(key))
+                entry.setdefault("content_hash", _content_hash(value))
                 entry.setdefault("category", "uncategorized")
                 entry.setdefault("importance", 0.5)
                 entry.setdefault("tags", [])
                 entry.setdefault("access_count", 0)
                 entry.setdefault("last_accessed", entry.get("timestamp", now))
+                entry.setdefault("created", entry.get("timestamp", now))
+                entry.setdefault("updated", entry.get("timestamp", now))
                 entry.setdefault("stability", 1.0)
                 entry.setdefault("version", 1)
+                entry.setdefault("lifecycle_state", "active")
+                entry.setdefault(
+                    "provenance",
+                    {
+                        "source": "memory_store_migration",
+                        "source_tool": "memory_tool",
+                        "raw_payload_hash": entry.get(
+                            "content_hash", _content_hash(value)
+                        ),
+                        "ingested_at": entry.get("created", now),
+                    },
+                )
 
         return data
 
@@ -344,10 +443,16 @@ class EnhancedMemoryTool:
             now = time.time()
             existing = data.get(key, {})
 
+            memory_id = existing.get("memory_id", _memory_id_for_key(key))
+            content_hash = _content_hash(value)
             entry: Dict[str, Any] = {
+                "schema_version": _MEMORY_SCHEMA_VERSION,
+                "memory_id": memory_id,
                 "value": value,
+                "content_hash": content_hash,
                 "timestamp": now,
                 "created": existing.get("created", now),
+                "updated": now,
                 "category": category,
                 "importance": importance,
                 "tags": tags,
@@ -355,6 +460,14 @@ class EnhancedMemoryTool:
                 "last_accessed": now,
                 "stability": existing.get("stability", 1.0),
                 "version": existing.get("version", 0) + 1,
+                "lifecycle_state": "active",
+                "provenance": {
+                    "source": "bb7_memory_store",
+                    "source_tool": "memory_tool",
+                    "raw_payload_hash": content_hash,
+                    "ingested_at": existing.get("created", now),
+                    "updated_at": now,
+                },
             }
 
             # BM25 intelligence enrichment
@@ -763,9 +876,7 @@ class EnhancedMemoryTool:
             try:
                 importance_val = float(raw.get("importance", 0.5))
             except (TypeError, ValueError):
-                errors.append(
-                    f"Entry {i} (key='{key}'): 'importance' must be numeric"
-                )
+                errors.append(f"Entry {i} (key='{key}'): 'importance' must be numeric")
                 continue
             validated.append(
                 {
@@ -789,10 +900,15 @@ class EnhancedMemoryTool:
             for item in validated:
                 key = item["key"]
                 existing = data.get(key, {})
+                content_hash = _content_hash(item["value"])
                 entry: Dict[str, Any] = {
+                    "schema_version": _MEMORY_SCHEMA_VERSION,
+                    "memory_id": existing.get("memory_id", _memory_id_for_key(key)),
                     "value": item["value"],
+                    "content_hash": content_hash,
                     "timestamp": now,
                     "created": existing.get("created", now),
+                    "updated": now,
                     "category": item["category"],
                     "importance": item["importance"],
                     "tags": item["tags"],
@@ -800,6 +916,14 @@ class EnhancedMemoryTool:
                     "last_accessed": now,
                     "stability": existing.get("stability", 1.0),
                     "version": existing.get("version", 0) + 1,
+                    "lifecycle_state": "active",
+                    "provenance": {
+                        "source": "bb7_memory_bulk_store",
+                        "source_tool": "memory_tool",
+                        "raw_payload_hash": content_hash,
+                        "ingested_at": existing.get("created", now),
+                        "updated_at": now,
+                    },
                 }
 
                 if self.intelligence:
@@ -1104,6 +1228,10 @@ class EnhancedMemoryTool:
             self.storage_file.stat().st_size if self.storage_file.exists() else 0
         )
 
+        interconnect_stats: Dict[str, Any] = {}
+        if self.intelligence and hasattr(self.intelligence, "index_stats"):
+            interconnect_stats = self.intelligence.index_stats()
+
         lines = [
             "Enhanced Memory Statistics",
             "=" * 45,
@@ -1111,6 +1239,9 @@ class EnhancedMemoryTool:
             f"Storage file size        : {storage_bytes:,} bytes",
             f"Total content            : {total_chars:,} characters",
             f"Avg content per entry    : {total_chars // n if n else 0} characters",
+            f"Schema version           : {_MEMORY_SCHEMA_VERSION}",
+            f"Consolidation policy    : {_MEMORY_CONSOLIDATION_POLICY_VERSION}",
+            f"Interconnect status      : {'degraded' if self.interconnect_degraded else 'available'}",
             "",
             "Importance Distribution:",
             f"  High  (>= 0.7) : {high_imp:4d} ({high_imp / n * 100:.1f}%)",
@@ -1134,6 +1265,21 @@ class EnhancedMemoryTool:
             oldest = datetime.fromtimestamp(min(timestamps)).strftime("%Y-%m-%d %H:%M")
             newest = datetime.fromtimestamp(max(timestamps)).strftime("%Y-%m-%d %H:%M")
             lines += ["", f"Oldest entry : {oldest}", f"Newest entry : {newest}"]
+
+        if interconnect_stats:
+            lines += [
+                "",
+                "BM25 Index Health:",
+                f"  Indexed docs          : {interconnect_stats.get('indexed_docs', 0)}",
+                f"  Relationship docs     : {interconnect_stats.get('relationship_docs', 0)}",
+                f"  Total docs counter    : {interconnect_stats.get('total_docs_counter', 0)}",
+                f"  Stale/drift detected  : {interconnect_stats.get('is_stale', True)}",
+                f"  Vocab size            : {interconnect_stats.get('vocab_size', 0)}",
+            ]
+            if interconnect_stats.get("status") == "degraded":
+                lines.append(
+                    f"  Degraded reason       : {interconnect_stats.get('error')}"
+                )
 
         return "\n".join(lines)
 
@@ -1201,79 +1347,131 @@ class EnhancedMemoryTool:
 
     def consolidate_memories(self, days_old: int = 30) -> str:
         """
-        Archive old low-importance memories, merge near-duplicates (BM25 > 0.85),
-        and remove them from the active store.
+        Archive old low-importance memories using the shared production policy
+        and prune matching BM25/interconnect state by explicit memory IDs.
         """
         try:
             days_old = max(1, int(days_old))
-            cutoff = time.time() - (days_old * 86400)
+        except (TypeError, ValueError) as exc:
+            return f"Memory consolidation failed: days_old must be an integer: {exc}"
 
+        cutoff = time.time() - (days_old * 86400)
+
+        try:
             with self._lock:
                 data = self._load_data()
 
                 old: Dict[str, Any] = {}
                 active: Dict[str, Any] = {}
+                archive_reasons: Dict[str, str] = {}
 
                 for key, entry in data.items():
-                    if isinstance(entry, dict):
-                        last = entry.get(
-                            "last_accessed", entry.get("timestamp", time.time())
+                    if not isinstance(entry, dict):
+                        active[key] = entry
+                        continue
+                    should_archive, reason = _archive_decision(entry, cutoff)
+                    if should_archive:
+                        archived_entry = dict(entry)
+                        archived_entry["lifecycle_state"] = "archived"
+                        archived_entry["archived_at"] = time.time()
+                        archived_entry["archive_reason"] = reason
+                        archived_entry["consolidation_policy"] = (
+                            _MEMORY_CONSOLIDATION_POLICY_VERSION
                         )
-                        imp = entry.get("importance", 0.5)
-                        acc = entry.get("access_count", 0)
-                        if last <= cutoff and imp < 0.7 and acc < 5:
-                            old[key] = entry
-                        else:
-                            active[key] = entry
+                        old[key] = archived_entry
+                        archive_reasons[key] = reason
                     else:
                         active[key] = entry
 
                 if not old:
-                    return f"No memories older than {days_old} days found for consolidation."
+                    return (
+                        f"No memories eligible for consolidation at {days_old} days. "
+                        f"Policy={_MEMORY_CONSOLIDATION_POLICY_VERSION} "
+                        f"(importance<{_ARCHIVE_IMPORTANCE_THRESHOLD}, "
+                        f"access_count<{_ARCHIVE_ACCESS_COUNT_THRESHOLD})."
+                    )
 
-                # Archive
                 archive_dir = self.storage_file.parent / "archives"
                 archive_dir.mkdir(exist_ok=True)
                 ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                 archive_file = archive_dir / f"memory_archive_{ts_str}.json"
 
                 archive_payload = {
+                    "schema_version": _MEMORY_SCHEMA_VERSION,
                     "archived_date": datetime.now().isoformat(),
                     "days_old_threshold": days_old,
+                    "policy_version": _MEMORY_CONSOLIDATION_POLICY_VERSION,
+                    "archive_importance_threshold": _ARCHIVE_IMPORTANCE_THRESHOLD,
+                    "archive_access_count_threshold": _ARCHIVE_ACCESS_COUNT_THRESHOLD,
                     "archived_count": len(old),
+                    "archive_reasons": archive_reasons,
                     "memories": old,
                 }
-                with open(archive_file, "w", encoding="utf-8") as f:
-                    json.dump(archive_payload, f, indent=2, ensure_ascii=False)
-
+                self._save_archive_file(archive_file, archive_payload)
                 self._save_data(active)
 
-                # Clear working memory entries that were archived
                 for key in old:
                     self.working_memory.invalidate(key)
 
-            # Also consolidate the BM25 index
-            merged_count = 0
+            index_result: Dict[str, Any] = {"archived": 0, "status": "not_run"}
+            explicit_ids = [_memory_id_for_key(key) for key in old]
             if self.intelligence:
                 try:
-                    result = self.intelligence.consolidate_memories(days_old)
-                    merged_count = result.get("archived", 0)
-                except Exception as e:
-                    self.logger.warning(f"Index consolidation failed: {e}")
+                    index_result = self.intelligence.consolidate_memories(
+                        days_old,
+                        explicit_ids=explicit_ids,
+                    )
+                except (RuntimeError, OSError, ValueError, TypeError, KeyError) as exc:
+                    self.logger.error(
+                        "Index consolidation failed after archiving %d memories: %s",
+                        len(old),
+                        exc,
+                    )
+                    raise RuntimeError(
+                        f"Index consolidation failed after archive {archive_file.name}: {exc}"
+                    ) from exc
+
+            post_stats: Dict[str, Any] = {}
+            if self.intelligence and hasattr(self.intelligence, "index_stats"):
+                post_stats = self.intelligence.index_stats()
 
             response = (
                 f"Memory Consolidation Complete\n"
                 f"  Archived : {len(old)} old memories\n"
                 f"  Retained : {len(active)} active memories\n"
                 f"  Archive  : {archive_file.name}\n"
-                f"  Index pruned: {merged_count} index entries removed"
+                f"  Policy   : {_MEMORY_CONSOLIDATION_POLICY_VERSION}\n"
+                f"  Index pruned: {index_result.get('archived', 0)} index entries removed\n"
+                f"  Index stale : {post_stats.get('is_stale', 'unknown')}"
             )
-            self.logger.info(f"Consolidated {len(old)} memories.")
+            self.logger.info(
+                "Consolidated %d memories with policy %s.",
+                len(old),
+                _MEMORY_CONSOLIDATION_POLICY_VERSION,
+            )
             return response
 
-        except Exception as e:
-            self.logger.error(f"Memory consolidation failed: {e}")
-            return f"Memory consolidation failed: {e}"
+        except (RuntimeError, OSError, json.JSONDecodeError) as exc:
+            self.logger.error("Memory consolidation failed: %s", exc)
+            return f"Memory consolidation failed: {exc}"
+
+    @staticmethod
+    def _save_archive_file(path: Path, payload: Dict[str, Any]) -> None:
+        serialized = json.dumps(payload, indent=2, ensure_ascii=False)
+        tmp = path.with_name(
+            f"{path.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+        )
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(serialized)
+            os.replace(tmp, path)
+        except OSError:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
+            raise
 
     @staticmethod
     def _merge_tool_arguments(

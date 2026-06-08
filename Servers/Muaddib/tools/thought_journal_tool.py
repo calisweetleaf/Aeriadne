@@ -43,8 +43,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 # Set SOVEREIGN_DATA_DIR env var to override; falls back to canonical MCP path.
 # ---------------------------------------------------------------------------
 _SOVEREIGN_DATA_DIR: Path = Path(
-    os.environ.get("SOVEREIGN_DATA_DIR", r"/home/daeron/Projects/mcp_server/data")
-)
+    os.environ.get("SOVEREIGN_DATA_DIR", r"/home/daeron/Somnus-MCP/data")
+).expanduser().resolve()
 
 # ---------------------------------------------------------------------------
 # Tokenisation (self-contained, mirrors memory_interconnect)
