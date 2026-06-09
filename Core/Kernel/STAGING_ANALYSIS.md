@@ -10,11 +10,12 @@ Generated: 2026-05-27 02:35 America/Chicago
 
 ## Current config vs staged `config_patched.toml`
 
-The staged patched config is now effectively the active `/home/daeron/.codex/config.toml` with one intentional active-value change and without stale trusted hook hashes.
+The staged patched config is a review candidate, not the live `/home/daeron/.codex/config.toml`.
+Its purpose is to show a deployable control-plane shape without making the staged package masquerade as the active runtime.
 
-### Intentional active change
+### Intentional staged difference
 
-- `features.plugins`: `true` in current base config → `false` in staged config, to disable plugin auto-surface while keeping local skills/tooling workflows.
+- `features.plugins`: `true` in the live base config; the staged config may keep a different posture for deployment testing, but it does not define the active runtime.
 
 ### Deliberately omitted from staged config
 
@@ -56,3 +57,8 @@ Do **not** deploy automatically from this report. When ready, the expected copy-
 - Do not deploy `requirements.toml` to `/etc/codex/requirements.toml` without explicit root/admin approval.
 
 See `validation_manifest.json` for hashes and machine-readable validation status.
+
+## Live-runtime clarification
+
+If the live `/home/daeron/.codex/config.toml` and the staged `config_patched.toml` diverge, the live file wins for current behavior.
+Do not infer runtime state from this staged folder without re-checking `codex doctor` and `codex debug prompt-input`.

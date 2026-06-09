@@ -10,26 +10,9 @@
             "timeout": 5
           }
         ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 -m ctmv3 boot --json --project-root \"$CODEX_PROJECT_DIR\" 2>/dev/null || true"
-          }
-        ]
       }
     ],
     "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ -f \"$HOME/.petdex/runtime/hooks-disabled\" ] && exit 0; if [ -x \"$HOME/.petdex/bin/petdex.js\" ] || [ -f \"$HOME/.petdex/bin/petdex.js\" ]; then   node \"$HOME/.petdex/bin/petdex.js\" bubble user-prompt codex >/dev/null 2>&1 || true; else   T=\"$(cat \"$HOME/.petdex/runtime/update-token\" 2>/dev/null)\" [ -n \"$T\" ] && curl -s -m 0.3 -X POST http://127.0.0.1:7777/state -H \"Content-Type: application/json\" -H \"X-Petdex-Update-Token: $T\" --data-raw '{\"state\":\"jumping\",\"duration\":800,\"agent_source\":\"codex\"}' >/dev/null 2>&1 || true; fi"
-          }
-        ]
-      },
       {
         "hooks": [
           {
@@ -42,14 +25,6 @@
       }
     ],
     "PreToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ -f \"$HOME/.petdex/runtime/hooks-disabled\" ] && exit 0; if [ -x \"$HOME/.petdex/bin/petdex.js\" ] || [ -f \"$HOME/.petdex/bin/petdex.js\" ]; then   node \"$HOME/.petdex/bin/petdex.js\" bubble pre codex >/dev/null 2>&1 || true; else   T=\"$(cat \"$HOME/.petdex/runtime/update-token\" 2>/dev/null)\" [ -n \"$T\" ] && curl -s -m 0.3 -X POST http://127.0.0.1:7777/state -H \"Content-Type: application/json\" -H \"X-Petdex-Update-Token: $T\" --data-raw '{\"state\":\"running\",\"agent_source\":\"codex\"}' >/dev/null 2>&1 || true; fi"
-          }
-        ]
-      },
       {
         "matcher": ".*",
         "hooks": [
@@ -64,14 +39,6 @@
     ],
     "PermissionRequest": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ -f \"$HOME/.petdex/runtime/hooks-disabled\" ] && exit 0; if [ -x \"$HOME/.petdex/bin/petdex.js\" ] || [ -f \"$HOME/.petdex/bin/petdex.js\" ]; then   node \"$HOME/.petdex/bin/petdex.js\" bubble notification codex >/dev/null 2>&1 || true; else   T=\"$(cat \"$HOME/.petdex/runtime/update-token\" 2>/dev/null)\" [ -n \"$T\" ] && curl -s -m 0.3 -X POST http://127.0.0.1:7777/state -H \"Content-Type: application/json\" -H \"X-Petdex-Update-Token: $T\" --data-raw '{\"state\":\"waiting\",\"agent_source\":\"codex\"}' >/dev/null 2>&1 || true; fi"
-          }
-        ]
-      },
-      {
         "matcher": ".*",
         "hooks": [
           {
@@ -84,14 +51,6 @@
       }
     ],
     "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ -f \"$HOME/.petdex/runtime/hooks-disabled\" ] && exit 0; if [ -x \"$HOME/.petdex/bin/petdex.js\" ] || [ -f \"$HOME/.petdex/bin/petdex.js\" ]; then   node \"$HOME/.petdex/bin/petdex.js\" bubble post codex >/dev/null 2>&1 || true; else   T=\"$(cat \"$HOME/.petdex/runtime/update-token\" 2>/dev/null)\" [ -n \"$T\" ] && curl -s -m 0.3 -X POST http://127.0.0.1:7777/state -H \"Content-Type: application/json\" -H \"X-Petdex-Update-Token: $T\" --data-raw '{\"state\":\"idle\",\"agent_source\":\"codex\"}' >/dev/null 2>&1 || true; fi"
-          }
-        ]
-      },
       {
         "matcher": ".*",
         "hooks": [
@@ -153,14 +112,6 @@
       }
     ],
     "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ -f \"$HOME/.petdex/runtime/hooks-disabled\" ] && exit 0; if [ -x \"$HOME/.petdex/bin/petdex.js\" ] || [ -f \"$HOME/.petdex/bin/petdex.js\" ]; then   node \"$HOME/.petdex/bin/petdex.js\" bubble stop codex >/dev/null 2>&1 || true; else   T=\"$(cat \"$HOME/.petdex/runtime/update-token\" 2>/dev/null)\" [ -n \"$T\" ] && curl -s -m 0.3 -X POST http://127.0.0.1:7777/state -H \"Content-Type: application/json\" -H \"X-Petdex-Update-Token: $T\" --data-raw '{\"state\":\"waving\",\"duration\":1500,\"agent_source\":\"codex\"}' >/dev/null 2>&1 || true; fi"
-          }
-        ]
-      },
       {
         "hooks": [
           {

@@ -1,4 +1,4 @@
-# SOVEREIGN CODEX FRAMEWORK — Deployment Guide
+# SOVEREIGN CODEX FRAMEWORK — Staged Deployment Guide
 # Generated: 2026-05-26 | Architect: Vex + CONFIG
 
 ## What this is
@@ -9,6 +9,8 @@ A novel orchestration framework that inverts the conventional Codex model:
 
 The LLM only handles final synthesis and tool invocation.
 Everything else — intent classification, context preloading, reflection, distillation — runs in Python via hooks before the model sees it.
+
+This document describes the staged package under `DESK/` and is not the live `/home/daeron/.codex/config.toml` runtime contract.
 
 ---
 
@@ -30,7 +32,7 @@ Everything else — intent classification, context preloading, reflection, disti
 ## Profile Switching
 
 ```bash
-codex                          # uses ~/.codex/config.toml (your existing patched config)
+codex                          # uses ~/.codex/config.toml (the live runtime config, not DESK/)
 codex --profile sovereign      # full stack, daemon active, all 111 tools
 codex --profile stealth        # lean, fast, no daemon
 codex --profile research       # deep mode, 24h subagent jobs, full distillation
@@ -77,6 +79,11 @@ CODEX_HOME=/home/daeron/.codex/DESK/SOVEREIGN_CODEX_V2-2 /bin/sh -c '<hook comma
 
 For later deployment, copy `bin/` to `~/.codex/bin/` before copying `hooks.json`
 to `~/.codex/hooks.json`. Do not point deployed hooks at the staging directory.
+
+## Live-runtime reminder
+
+The live runtime at `/home/daeron/.codex/config.toml` may intentionally diverge from this staged package.
+When they differ, treat live config plus `codex doctor` / `codex debug prompt-input` as the source of truth for current behavior.
 
 ```
 /home/daeron/.codex/bin/hooks/

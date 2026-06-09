@@ -97,8 +97,7 @@ remote_control = true
 codex_git_commit = true
 
 # Brakes
-apps = false
-plugins = false
+plugins = true
 fast_mode = false
 realtime_conversation = false
 tool_suggest = false
